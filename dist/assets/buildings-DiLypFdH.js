@@ -1,0 +1,1 @@
+import{a as e,t}from"./client-ByQROz3u.js";async function n(n){return e(await t.get(`/api/Buildings`,{params:n}))}async function r(n){return e(await t.post(`/api/Buildings`,n))}async function i(n,r){return e(await t.put(`/api/Buildings/${n}`,r))}async function a(n){return e(await t.delete(`/api/Buildings/${n}`))}export{i,a as n,n as r,r as t};
