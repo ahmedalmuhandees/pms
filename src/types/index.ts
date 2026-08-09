@@ -383,6 +383,262 @@ export interface CreateVisitorDto {
 
 export type UpdateVisitorDto = CreateVisitorDto
 
+export const ReservationStatus = {
+  Pending: 1,
+  Confirmed: 2,
+  Expired: 3,
+  Cancelled: 4,
+  Converted: 5,
+} as const
+export type ReservationStatus = (typeof ReservationStatus)[keyof typeof ReservationStatus]
+
+export const ContractStatus = {
+  Draft: 1,
+  Active: 2,
+  Completed: 3,
+  Cancelled: 4,
+  Suspended: 5,
+} as const
+export type ContractStatus = (typeof ContractStatus)[keyof typeof ContractStatus]
+
+export const InstallmentStatus = {
+  Pending: 1,
+  Paid: 2,
+  Partial: 3,
+  Overdue: 4,
+  Cancelled: 5,
+} as const
+export type InstallmentStatus = (typeof InstallmentStatus)[keyof typeof InstallmentStatus]
+
+export const PaymentMethod = {
+  Cash: 1,
+  BankTransfer: 2,
+  Cheque: 3,
+  Card: 4,
+  Online: 5,
+} as const
+export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
+
+export const InvoiceStatus = {
+  Draft: 1,
+  Issued: 2,
+  Paid: 3,
+  Cancelled: 4,
+} as const
+export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus]
+
+export const InvoiceType = {
+  Sales: 1,
+  Service: 2,
+  Installment: 3,
+  Other: 4,
+} as const
+export type InvoiceType = (typeof InvoiceType)[keyof typeof InvoiceType]
+
+export interface Reservation {
+  id: string
+  reservationDate: string
+  reservationAmount: number
+  expireDate: string
+  status: ReservationStatus
+  unitId: string
+  customerId: string
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateReservationDto {
+  reservationDate: string
+  reservationAmount: number
+  expireDate: string
+  status: ReservationStatus
+  unitId: string
+  customerId: string
+  complexId: string
+}
+
+export type UpdateReservationDto = CreateReservationDto
+
+export interface SalesContract {
+  id: string
+  contractNumber: string | null
+  contractDate: string
+  sellingPrice: number
+  discount: number
+  tax: number
+  registrationFee: number
+  downPayment: number
+  financedAmount: number
+  remainingAmount: number
+  contractStatus: ContractStatus
+  customerId: string
+  unitId: string
+  salesAgentId: string
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateSalesContractDto {
+  contractNumber?: string | null
+  contractDate: string
+  sellingPrice: number
+  discount: number
+  tax: number
+  registrationFee: number
+  downPayment: number
+  financedAmount: number
+  remainingAmount: number
+  contractStatus: ContractStatus
+  customerId: string
+  unitId: string
+  salesAgentId: string
+  complexId: string
+}
+
+export type UpdateSalesContractDto = CreateSalesContractDto
+
+export interface InstallmentPlan {
+  id: string
+  totalInstallments: number
+  installmentAmount: number
+  interestRate: number
+  firstDueDate: string
+  lastDueDate: string
+  contractId: string
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateInstallmentPlanDto {
+  totalInstallments: number
+  installmentAmount: number
+  interestRate: number
+  firstDueDate: string
+  lastDueDate: string
+  contractId: string
+  complexId: string
+}
+
+export type UpdateInstallmentPlanDto = CreateInstallmentPlanDto
+
+export interface Installment {
+  id: string
+  dueDate: string
+  amount: number
+  paidAmount: number
+  penalty: number
+  status: InstallmentStatus
+  paidDate: string | null
+  planID: string
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateInstallmentDto {
+  dueDate: string
+  amount: number
+  paidAmount: number
+  penalty: number
+  status: InstallmentStatus
+  paidDate?: string | null
+  planID: string
+  complexId: string
+}
+
+export type UpdateInstallmentDto = CreateInstallmentDto
+
+export interface Payment {
+  id: string
+  paymentMethod: PaymentMethod
+  referenceNumber: string | null
+  amount: number
+  paymentDate: string
+  installmentId: string | null
+  contractId: string
+  customerId: string
+  receivedById: string
+  complexId: string
+  createdAt: string
+}
+
+export interface CreatePaymentDto {
+  paymentMethod: PaymentMethod
+  referenceNumber?: string | null
+  amount: number
+  paymentDate: string
+  installmentId?: string | null
+  contractId: string
+  customerId: string
+  receivedById: string
+  complexId: string
+}
+
+export type UpdatePaymentDto = CreatePaymentDto
+
+export interface Invoice {
+  id: string
+  invoiceType: InvoiceType
+  invoiceDate: string
+  total: number
+  tax: number
+  status: InvoiceStatus
+  customerId: string
+  contractId: string | null
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateInvoiceDto {
+  invoiceType: InvoiceType
+  invoiceDate: string
+  total: number
+  tax: number
+  status: InvoiceStatus
+  customerId: string
+  contractId?: string | null
+  complexId: string
+}
+
+export type UpdateInvoiceDto = CreateInvoiceDto
+
+export interface InvoiceDetail {
+  id: string
+  description: string | null
+  qty: number
+  price: number
+  total: number
+  invoiceId: string
+  createdAt: string
+}
+
+export interface CreateInvoiceDetailDto {
+  description?: string | null
+  qty: number
+  price: number
+  total: number
+  invoiceId: string
+}
+
+export type UpdateInvoiceDetailDto = CreateInvoiceDetailDto
+
+export interface Receipt {
+  id: string
+  receiptNumber: string | null
+  date: string
+  amount: number
+  paymentId: string
+  createdAt: string
+}
+
+export interface CreateReceiptDto {
+  receiptNumber?: string | null
+  date: string
+  amount: number
+  paymentId: string
+}
+
+export type UpdateReceiptDto = CreateReceiptDto
+
 export interface UnitImage {
   id: string
   unitId: string

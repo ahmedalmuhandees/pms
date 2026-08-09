@@ -1,4 +1,16 @@
-import { UnitStatus, UnitType, MaritalStatus, ResidentStatus, MaintenanceCategory } from '@/types'
+import {
+  UnitStatus,
+  UnitType,
+  MaritalStatus,
+  ResidentStatus,
+  MaintenanceCategory,
+  ReservationStatus,
+  ContractStatus,
+  InstallmentStatus,
+  PaymentMethod,
+  InvoiceStatus,
+  InvoiceType,
+} from '@/types'
 
 export const unitStatusOptions = [
   { value: UnitStatus.Available, label: 'متاح' },
@@ -42,6 +54,52 @@ export const maintenanceCategoryOptions = [
   { value: MaintenanceCategory.HVAC, label: 'تكييف' },
   { value: MaintenanceCategory.Civil, label: 'مدني' },
   { value: MaintenanceCategory.Other, label: 'أخرى' },
+]
+
+export const reservationStatusOptions = [
+  { value: ReservationStatus.Pending, label: 'قيد الانتظار' },
+  { value: ReservationStatus.Confirmed, label: 'مؤكد' },
+  { value: ReservationStatus.Expired, label: 'منتهي' },
+  { value: ReservationStatus.Cancelled, label: 'ملغى' },
+  { value: ReservationStatus.Converted, label: 'محوّل لعقد' },
+]
+
+export const contractStatusOptions = [
+  { value: ContractStatus.Draft, label: 'مسودة' },
+  { value: ContractStatus.Active, label: 'ساري' },
+  { value: ContractStatus.Completed, label: 'مكتمل' },
+  { value: ContractStatus.Cancelled, label: 'ملغى' },
+  { value: ContractStatus.Suspended, label: 'موقوف' },
+]
+
+export const installmentStatusOptions = [
+  { value: InstallmentStatus.Pending, label: 'مستحق' },
+  { value: InstallmentStatus.Paid, label: 'مدفوع' },
+  { value: InstallmentStatus.Partial, label: 'مدفوع جزئياً' },
+  { value: InstallmentStatus.Overdue, label: 'متأخر' },
+  { value: InstallmentStatus.Cancelled, label: 'ملغى' },
+]
+
+export const paymentMethodOptions = [
+  { value: PaymentMethod.Cash, label: 'نقداً' },
+  { value: PaymentMethod.BankTransfer, label: 'تحويل بنكي' },
+  { value: PaymentMethod.Cheque, label: 'شيك' },
+  { value: PaymentMethod.Card, label: 'بطاقة' },
+  { value: PaymentMethod.Online, label: 'إلكتروني' },
+]
+
+export const invoiceStatusOptions = [
+  { value: InvoiceStatus.Draft, label: 'مسودة' },
+  { value: InvoiceStatus.Issued, label: 'صادرة' },
+  { value: InvoiceStatus.Paid, label: 'مدفوعة' },
+  { value: InvoiceStatus.Cancelled, label: 'ملغاة' },
+]
+
+export const invoiceTypeOptions = [
+  { value: InvoiceType.Sales, label: 'مبيعات' },
+  { value: InvoiceType.Service, label: 'خدمة' },
+  { value: InvoiceType.Installment, label: 'قسط' },
+  { value: InvoiceType.Other, label: 'أخرى' },
 ]
 
 export function labelOf(

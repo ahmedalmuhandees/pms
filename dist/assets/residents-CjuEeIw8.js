@@ -1,1 +1,0 @@
-import{a as e,t}from"./client-ByQROz3u.js";async function n(n){return e(await t.get(`/api/Residents`,{params:n}))}async function r(n){return e(await t.post(`/api/Residents`,n))}async function i(n,r){return e(await t.put(`/api/Residents/${n}`,r))}async function a(n){return e(await t.delete(`/api/Residents/${n}`))}export{i,a as n,n as r,r as t};

@@ -85,6 +85,46 @@ const router = createRouter({
           name: 'users',
           component: () => import('@/views/UsersView.vue'),
         },
+        {
+          path: 'reservations',
+          name: 'reservations',
+          component: () => import('@/views/ReservationsView.vue'),
+        },
+        {
+          path: 'sales-contracts',
+          name: 'sales-contracts',
+          component: () => import('@/views/SalesContractsView.vue'),
+        },
+        {
+          path: 'installment-plans',
+          name: 'installment-plans',
+          component: () => import('@/views/InstallmentPlansView.vue'),
+        },
+        {
+          path: 'installments',
+          name: 'installments',
+          component: () => import('@/views/InstallmentsView.vue'),
+        },
+        {
+          path: 'payments',
+          name: 'payments',
+          component: () => import('@/views/PaymentsView.vue'),
+        },
+        {
+          path: 'invoices',
+          name: 'invoices',
+          component: () => import('@/views/InvoicesView.vue'),
+        },
+        {
+          path: 'invoice-details',
+          name: 'invoice-details',
+          component: () => import('@/views/InvoiceDetailsView.vue'),
+        },
+        {
+          path: 'receipts',
+          name: 'receipts',
+          component: () => import('@/views/ReceiptsView.vue'),
+        },
       ],
     },
   ],

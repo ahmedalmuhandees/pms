@@ -51,6 +51,21 @@ const menuGroups: MenuGroup[] = [
       { path: '/users', label: 'المستخدمون', icon: 'pi pi-user' },
     ],
   },
+  {
+    key: 'sales',
+    label: 'المبيعات والمالية',
+    collapsible: true,
+    items: [
+      { path: '/reservations', label: 'الحجوزات', icon: 'pi pi-bookmark' },
+      { path: '/sales-contracts', label: 'عقود المبيعات', icon: 'pi pi-file' },
+      { path: '/installment-plans', label: 'خطط التقسيط', icon: 'pi pi-calendar' },
+      { path: '/installments', label: 'الأقساط', icon: 'pi pi-list' },
+      { path: '/payments', label: 'المدفوعات', icon: 'pi pi-wallet' },
+      { path: '/invoices', label: 'الفواتير', icon: 'pi pi-book' },
+      { path: '/invoice-details', label: 'تفاصيل الفاتورة', icon: 'pi pi-table' },
+      { path: '/receipts', label: 'الوصولات', icon: 'pi pi-money-bill' },
+    ],
+  },
 ]
 
 function loadOpenState(): Record<string, boolean> {

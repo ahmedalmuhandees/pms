@@ -1,0 +1,1 @@
+import{a as e,t}from"./client-DKXER64_.js";async function n(n){return e(await t.get(`/api/SalesContracts`,{params:n}))}async function r(n){return e(await t.post(`/api/SalesContracts`,n))}async function i(n,r){return e(await t.put(`/api/SalesContracts/${n}`,r))}async function a(n){return e(await t.delete(`/api/SalesContracts/${n}`))}export{i,a as n,n as r,r as t};
