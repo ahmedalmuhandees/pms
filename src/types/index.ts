@@ -55,6 +55,13 @@ export interface Statistics {
   visitorsCount: number
 }
 
+export const ComplexLayoutType = {
+  Horizontal: 1,
+  Vertical: 2,
+  HorizontalVertical: 3,
+} as const
+export type ComplexLayoutType = (typeof ComplexLayoutType)[keyof typeof ComplexLayoutType]
+
 export interface Complex {
   id: string
   name: string | null
@@ -66,6 +73,7 @@ export interface Complex {
   developer: string | null
   openingDate: string | null
   status: string | null
+  layoutType: ComplexLayoutType | null
   createdAt: string
 }
 
@@ -79,6 +87,7 @@ export interface CreateComplexDto {
   developer?: string | null
   openingDate?: string | null
   status?: string | null
+  layoutType?: ComplexLayoutType | null
 }
 
 export type UpdateComplexDto = CreateComplexDto
@@ -134,19 +143,29 @@ export const UnitStatus = {
   Reserved: 2,
   Sold: 3,
   Rented: 4,
-  UnderMaintenance: 5,
+  Maintenance: 5,
 } as const
 export type UnitStatus = (typeof UnitStatus)[keyof typeof UnitStatus]
 
 export const UnitType = {
   Apartment: 1,
   Villa: 2,
-  Studio: 3,
-  Duplex: 4,
-  Shop: 5,
-  Office: 6,
+  Office: 3,
+  Shop: 4,
+  Warehouse: 5,
+  Other: 6,
 } as const
 export type UnitType = (typeof UnitType)[keyof typeof UnitType]
+
+export const UnitUi = {
+  MiddleFront: 1,
+  MiddleBack: 2,
+  CornerFrontRight: 3,
+  CornerFrontLeft: 4,
+  CornerBackRight: 5,
+  CornerBackLeft: 6,
+} as const
+export type UnitUi = (typeof UnitUi)[keyof typeof UnitUi]
 
 export const MaritalStatus = {
   Single: 1,
@@ -172,6 +191,7 @@ export interface Unit {
   price: number
   cost: number
   notes: string | null
+  unitUi: UnitUi | null
   floorId: string
   complexId: string
   createdAt: string
@@ -192,6 +212,7 @@ export interface CreateUnitDto {
   price: number
   cost: number
   notes?: string | null
+  unitUi?: UnitUi | null
   floorId: string
   complexId: string
 }

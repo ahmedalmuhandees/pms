@@ -31,6 +31,9 @@ const menuGroups: MenuGroup[] = [
     collapsible: true,
     items: [
       { path: '/complexes', label: 'المجمعات', icon: 'pi pi-building' },
+      { path: '/complex-builder', label: 'هيكل عمودي', icon: 'pi pi-building' },
+      { path: '/horizontal-builder', label: 'هيكل أفقي', icon: 'pi pi-home' },
+      { path: '/complex-map', label: 'خريطة المجمع', icon: 'pi pi-map' },
       { path: '/blocks', label: 'البلوكات', icon: 'pi pi-th-large' },
       { path: '/buildings', label: 'المباني', icon: 'pi pi-home' },
       { path: '/floors', label: 'الطوابق', icon: 'pi pi-bars' },
@@ -49,21 +52,6 @@ const menuGroups: MenuGroup[] = [
       { path: '/vehicles', label: 'المركبات', icon: 'pi pi-car' },
       { path: '/visitors', label: 'الزوار', icon: 'pi pi-envelope' },
       { path: '/users', label: 'المستخدمون', icon: 'pi pi-user' },
-    ],
-  },
-  {
-    key: 'sales',
-    label: 'المبيعات والمالية',
-    collapsible: true,
-    items: [
-      { path: '/reservations', label: 'الحجوزات', icon: 'pi pi-bookmark' },
-      { path: '/sales-contracts', label: 'عقود المبيعات', icon: 'pi pi-file' },
-      { path: '/installment-plans', label: 'خطط التقسيط', icon: 'pi pi-calendar' },
-      { path: '/installments', label: 'الأقساط', icon: 'pi pi-list' },
-      { path: '/payments', label: 'المدفوعات', icon: 'pi pi-wallet' },
-      { path: '/invoices', label: 'الفواتير', icon: 'pi pi-book' },
-      { path: '/invoice-details', label: 'تفاصيل الفاتورة', icon: 'pi pi-table' },
-      { path: '/receipts', label: 'الوصولات', icon: 'pi pi-money-bill' },
     ],
   },
 ]
@@ -87,7 +75,8 @@ const openGroups = reactive(loadOpenState())
 const activePath = computed(() => route.path)
 
 function isActive(path: string) {
-  return path === '/' ? activePath.value === '/' : activePath.value.startsWith(path)
+  if (path === '/') return activePath.value === '/'
+  return activePath.value === path || activePath.value.startsWith(`${path}/`)
 }
 
 function groupHasActive(group: MenuGroup) {

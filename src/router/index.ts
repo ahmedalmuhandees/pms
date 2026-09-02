@@ -26,6 +26,23 @@ const router = createRouter({
           component: () => import('@/views/ComplexesView.vue'),
         },
         {
+          path: 'complex-builder',
+          name: 'complex-builder',
+          component: () => import('@/views/ComplexBuilderView.vue'),
+          meta: { builderLayout: 'vertical' },
+        },
+        {
+          path: 'horizontal-builder',
+          name: 'horizontal-builder',
+          component: () => import('@/views/ComplexBuilderView.vue'),
+          meta: { builderLayout: 'horizontal' },
+        },
+        {
+          path: 'complex-map',
+          name: 'complex-map',
+          component: () => import('@/views/ComplexMapView.vue'),
+        },
+        {
           path: 'blocks',
           name: 'blocks',
           component: () => import('@/views/BlocksView.vue'),
@@ -84,46 +101,6 @@ const router = createRouter({
           path: 'users',
           name: 'users',
           component: () => import('@/views/UsersView.vue'),
-        },
-        {
-          path: 'reservations',
-          name: 'reservations',
-          component: () => import('@/views/ReservationsView.vue'),
-        },
-        {
-          path: 'sales-contracts',
-          name: 'sales-contracts',
-          component: () => import('@/views/SalesContractsView.vue'),
-        },
-        {
-          path: 'installment-plans',
-          name: 'installment-plans',
-          component: () => import('@/views/InstallmentPlansView.vue'),
-        },
-        {
-          path: 'installments',
-          name: 'installments',
-          component: () => import('@/views/InstallmentsView.vue'),
-        },
-        {
-          path: 'payments',
-          name: 'payments',
-          component: () => import('@/views/PaymentsView.vue'),
-        },
-        {
-          path: 'invoices',
-          name: 'invoices',
-          component: () => import('@/views/InvoicesView.vue'),
-        },
-        {
-          path: 'invoice-details',
-          name: 'invoice-details',
-          component: () => import('@/views/InvoiceDetailsView.vue'),
-        },
-        {
-          path: 'receipts',
-          name: 'receipts',
-          component: () => import('@/views/ReceiptsView.vue'),
         },
       ],
     },

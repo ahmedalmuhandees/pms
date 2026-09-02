@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -10,7 +10,7 @@ import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type { Complex, CreateUnitDto, Floor, Unit } from '@/types'
-import { UnitStatus, UnitType } from '@/types'
+import { UnitStatus, UnitType, UnitUi } from '@/types'
 import { createUnit, deleteUnit, getUnits, updateUnit, type UnitParams } from '@/api/units'
 import { getComplexes } from '@/api/complexes'
 import { getFloors } from '@/api/floors'
@@ -18,11 +18,11 @@ import { getErrorMessage } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import {
-  asSelectOptions,
   formatMoney,
   labelOf,
   unitStatusOptions,
   unitTypeOptions,
+  unitUiOptions,
 } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
@@ -69,6 +69,7 @@ const emptyForm = (): CreateUnitDto => ({
   gardenArea: 0,
   roofArea: 0,
   direction: '',
+  unitUi: UnitUi.MiddleFront,
   floorLevel: 1,
   status: UnitStatus.Available,
   price: 0,
@@ -79,13 +80,6 @@ const emptyForm = (): CreateUnitDto => ({
 })
 
 const form = reactive<CreateUnitDto>(emptyForm())
-
-const complexOptions = computed(() =>
-  asSelectOptions(complexes.value, (c) => c.nameAr || c.name || c.id),
-)
-const floorOptions = computed(() =>
-  asSelectOptions(floors.value, (f) => `طابق ${f.floorNumber}`),
-)
 
 async function loadLookups() {
   const [complexResult, floorResult] = await Promise.all([
@@ -121,6 +115,7 @@ function openEdit(row: Unit) {
     gardenArea: row.gardenArea,
     roofArea: row.roofArea,
     direction: row.direction,
+    unitUi: row.unitUi ?? UnitUi.MiddleFront,
     floorLevel: row.floorLevel,
     status: row.status,
     price: row.price,
@@ -203,14 +198,25 @@ onMounted(async () => {
         <template #filters>
           <Select
             v-model="complexFilter"
-            :options="complexOptions"
-            option-label="label"
+            :options="complexes"
             option-value="id"
             placeholder="فلتر بالمجمع"
             show-clear
             style="min-width: 190px"
             @update:model-value="onComplexFilter"
-          />
+          >
+            <template #option="{ option }">
+              {{ option.nameAr || option.name || option.id }}
+            </template>
+            <template #value="{ value }">
+              <span v-if="value">
+                {{ complexes.find((c) => c.id === value)?.nameAr
+                  || complexes.find((c) => c.id === value)?.name
+                  || value }}
+              </span>
+              <span v-else>فلتر بالمجمع</span>
+            </template>
+          </Select>
           <Select
             v-model="statusFilter"
             :options="statusFilterOptions"
@@ -244,6 +250,9 @@ onMounted(async () => {
           <Column field="unitNumber" header="رقم الوحدة" style="width: 120px" />
           <Column header="النوع" style="width: 110px">
             <template #body="{ data }">{{ labelOf(unitTypeOptions, data.unitType) }}</template>
+          </Column>
+          <Column header="الموقع" style="width: 150px">
+            <template #body="{ data }">{{ labelOf(unitUiOptions, data.unitUi) }}</template>
           </Column>
           <Column header="الحالة" style="width: 110px">
             <template #body="{ data }">{{ labelOf(unitStatusOptions, data.status) }}</template>
@@ -280,27 +289,23 @@ onMounted(async () => {
       <div class="form-grid">
         <div class="field">
           <label>المجمع</label>
-          <Select
-            v-model="form.complexId"
-            :options="complexOptions"
-            option-label="label"
-            option-value="id"
-            placeholder="اختر المجمع"
-            checkmark
-            append-to="body"
-          />
+          <Select v-model="form.complexId" :options="complexes" option-value="id" placeholder="اختر المجمع">
+            <template #option="{ option }">{{ option.nameAr || option.name || option.id }}</template>
+            <template #value="{ value }">
+              {{ complexes.find((c) => c.id === value)?.nameAr
+                || complexes.find((c) => c.id === value)?.name
+                || value }}
+            </template>
+          </Select>
         </div>
         <div class="field">
           <label>الطابق</label>
-          <Select
-            v-model="form.floorId"
-            :options="floorOptions"
-            option-label="label"
-            option-value="id"
-            placeholder="اختر الطابق"
-            checkmark
-            append-to="body"
-          />
+          <Select v-model="form.floorId" :options="floors" option-value="id" placeholder="اختر الطابق">
+            <template #option="{ option }">طابق {{ option.floorNumber }}</template>
+            <template #value="{ value }">
+              {{ floors.find((f) => f.id === value) ? `طابق ${floors.find((f) => f.id === value)!.floorNumber}` : value }}
+            </template>
+          </Select>
         </div>
         <div class="field">
           <label>رقم الوحدة</label>
@@ -313,9 +318,6 @@ onMounted(async () => {
             :options="unitTypeOptions"
             option-label="label"
             option-value="value"
-            placeholder="اختر النوع"
-            checkmark
-            append-to="body"
           />
         </div>
         <div class="field">
@@ -325,9 +327,6 @@ onMounted(async () => {
             :options="unitStatusOptions"
             option-label="label"
             option-value="value"
-            placeholder="اختر الحالة"
-            checkmark
-            append-to="body"
           />
         </div>
         <div class="field">
@@ -353,6 +352,18 @@ onMounted(async () => {
         <div class="field">
           <label>سطح</label>
           <InputNumber v-model="form.roofArea" :min="0" />
+        </div>
+        <div class="field">
+          <label>موقع الوحدة في المبنى</label>
+          <Select
+            v-model="form.unitUi"
+            :options="unitUiOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="اختر الموقع"
+            checkmark
+            append-to="body"
+          />
         </div>
         <div class="field">
           <label>الاتجاه</label>

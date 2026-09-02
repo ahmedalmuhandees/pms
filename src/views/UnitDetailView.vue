@@ -12,6 +12,7 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
+import ProgressSpinner from 'primevue/progressspinner'
 import type { Unit, UnitDocument, UnitImage } from '@/types'
 import { getUnit } from '@/api/units'
 import {
@@ -29,13 +30,13 @@ import {
 import { getErrorMessage } from '@/api/client'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import PageHeader from '@/components/PageHeader.vue'
-import DetailSkeleton from '@/components/skeletons/DetailSkeleton.vue'
 import {
   formatDate,
   formatMoney,
   labelOf,
   unitStatusOptions,
   unitTypeOptions,
+  unitUiOptions,
 } from '@/utils/enums'
 
 const route = useRoute()
@@ -233,6 +234,10 @@ onMounted(() => void loadAll())
 
 <template>
   <div class="page">
+    <div v-if="loading" class="page-loading">
+      <ProgressSpinner stroke-width="4" />
+    </div>
+
     <PageHeader
       :title="`تفاصيل الوحدة ${unit?.unitNumber || ''}`"
       subtitle="بيانات الوحدة مع إدارة الصور والمستندات"
@@ -242,9 +247,7 @@ onMounted(() => void loadAll())
       </template>
     </PageHeader>
 
-    <DetailSkeleton v-if="loading" />
-
-    <div v-else-if="unit" class="data-panel">
+    <div v-if="unit" class="data-panel">
       <div class="detail-grid">
         <div class="detail-item">
           <span class="detail-label">رقم الوحدة</span>
@@ -279,6 +282,10 @@ onMounted(() => void loadAll())
           <span class="detail-value">{{ formatMoney(unit.cost) }}</span>
         </div>
         <div class="detail-item">
+          <span class="detail-label">موقع الوحدة</span>
+          <span class="detail-value">{{ labelOf(unitUiOptions, unit.unitUi) }}</span>
+        </div>
+        <div class="detail-item">
           <span class="detail-label">الاتجاه</span>
           <span class="detail-value">{{ unit.direction || '—' }}</span>
         </div>
@@ -289,7 +296,7 @@ onMounted(() => void loadAll())
       </div>
     </div>
 
-    <div v-if="!loading" class="data-panel media-panel">
+    <div class="data-panel media-panel">
       <Tabs v-model:value="activeTab">
         <TabList>
           <Tab value="images">
@@ -490,6 +497,15 @@ onMounted(() => void loadAll())
 </template>
 
 <style scoped>
+.page-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

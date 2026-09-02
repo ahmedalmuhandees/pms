@@ -10,6 +10,8 @@ import {
   PaymentMethod,
   InvoiceStatus,
   InvoiceType,
+  ComplexLayoutType,
+  UnitUi,
 } from '@/types'
 
 export const unitStatusOptions = [
@@ -17,16 +19,25 @@ export const unitStatusOptions = [
   { value: UnitStatus.Reserved, label: 'محجوز' },
   { value: UnitStatus.Sold, label: 'مباع' },
   { value: UnitStatus.Rented, label: 'مؤجر' },
-  { value: UnitStatus.UnderMaintenance, label: 'صيانة' },
+  { value: UnitStatus.Maintenance, label: 'صيانة' },
 ]
 
 export const unitTypeOptions = [
   { value: UnitType.Apartment, label: 'شقة' },
   { value: UnitType.Villa, label: 'فيلا' },
-  { value: UnitType.Studio, label: 'استوديو' },
-  { value: UnitType.Duplex, label: 'دوبلكس' },
-  { value: UnitType.Shop, label: 'محل' },
   { value: UnitType.Office, label: 'مكتب' },
+  { value: UnitType.Shop, label: 'محل' },
+  { value: UnitType.Warehouse, label: 'مخزن' },
+  { value: UnitType.Other, label: 'أخرى' },
+]
+
+export const unitUiOptions = [
+  { value: UnitUi.MiddleFront, label: 'وسط أمامي' },
+  { value: UnitUi.MiddleBack, label: 'وسط خلفي' },
+  { value: UnitUi.CornerFrontRight, label: 'زاوية أمامية يمين' },
+  { value: UnitUi.CornerFrontLeft, label: 'زاوية أمامية يسار' },
+  { value: UnitUi.CornerBackRight, label: 'زاوية خلفية يمين' },
+  { value: UnitUi.CornerBackLeft, label: 'زاوية خلفية يسار' },
 ]
 
 export const maritalStatusOptions = [
@@ -40,6 +51,12 @@ export const complexStatusOptions = [
   { value: 'Active', label: 'نشط' },
   { value: 'Inactive', label: 'متوقف' },
   { value: 'UnderConstruction', label: 'قيد الإنشاء' },
+]
+
+export const complexLayoutTypeOptions = [
+  { value: ComplexLayoutType.Horizontal, label: 'أفقي' },
+  { value: ComplexLayoutType.Vertical, label: 'عمودي' },
+  { value: ComplexLayoutType.HorizontalVertical, label: 'أفقي - عمودي' },
 ]
 
 export const residentStatusOptions = [

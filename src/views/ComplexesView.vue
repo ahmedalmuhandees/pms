@@ -8,6 +8,7 @@ import DatePicker from 'primevue/datepicker'
 import Dialog from 'primevue/dialog'
 import Paginator from 'primevue/paginator'
 import type { Complex, CreateComplexDto } from '@/types'
+import { ComplexLayoutType } from '@/types'
 import {
   createComplex,
   deleteComplex,
@@ -17,7 +18,12 @@ import {
 import { getErrorMessage } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
-import { formatDate, complexStatusOptions, labelOf } from '@/utils/enums'
+import {
+  formatDate,
+  complexStatusOptions,
+  complexLayoutTypeOptions,
+  labelOf,
+} from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import CardGridSkeleton from '@/components/skeletons/CardGridSkeleton.vue'
@@ -52,6 +58,7 @@ const form = reactive<CreateComplexDto>({
   developer: '',
   openingDate: null,
   status: 'Active',
+  layoutType: ComplexLayoutType.HorizontalVertical,
 })
 
 function resetForm() {
@@ -67,6 +74,7 @@ function resetForm() {
     developer: '',
     openingDate: null,
     status: 'Active',
+    layoutType: ComplexLayoutType.HorizontalVertical,
   })
 }
 
@@ -87,6 +95,7 @@ function openEdit(row: Complex) {
     developer: row.developer,
     openingDate: row.openingDate,
     status: row.status,
+    layoutType: row.layoutType ?? ComplexLayoutType.HorizontalVertical,
   })
   openingDateModel.value = row.openingDate ? new Date(row.openingDate) : null
   dialogVisible.value = true
@@ -183,6 +192,10 @@ onMounted(() => {
             <i class="pi pi-calendar" />
             <span>الافتتاح: {{ formatDate(item.openingDate) }}</span>
           </div>
+          <div class="meta-row">
+            <i class="pi pi-sitemap" />
+            <span>التخطيط: {{ labelOf(complexLayoutTypeOptions, item.layoutType) }}</span>
+          </div>
         </div>
 
         <div class="card-actions">
@@ -197,7 +210,7 @@ onMounted(() => {
         </div>
       </article>
 
-      <div v-if="items.length === 0" class="empty-state">
+      <div v-if="!loading && items.length === 0" class="empty-state">
         <i class="pi pi-inbox empty-icon" />
         <p>لا توجد مجمعات بعد</p>
         <Button label="إضافة أول مجمع" icon="pi pi-plus" @click="openCreate" />
@@ -263,7 +276,17 @@ onMounted(() => {
             :options="complexStatusOptions"
             option-label="label"
             option-value="value"
-            placeholder="اختر الحالة"
+            checkmark
+            append-to="body"
+          />
+        </div>
+        <div class="field">
+          <label>نوع التخطيط</label>
+          <Select
+            v-model="form.layoutType"
+            :options="complexLayoutTypeOptions"
+            option-label="label"
+            option-value="value"
             checkmark
             append-to="body"
           />
@@ -286,6 +309,16 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
   min-height: 160px;
+}
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border-radius: var(--radius-lg);
 }
 
 .complex-card {

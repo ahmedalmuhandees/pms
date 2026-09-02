@@ -472,18 +472,38 @@ h3 {
 .p-dialog-mask,
 .p-confirmdialog-mask {
   backdrop-filter: blur(2px);
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
 }
 
-.p-dialog .p-dialog-content {
-  overflow: visible;
+.p-dialog,
+.p-confirmdialog {
+  max-height: min(92dvh, 920px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.p-dialog .p-dialog-header {
+.p-dialog .p-dialog-header,
+.p-confirmdialog .p-dialog-header {
+  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   padding-bottom: 14px;
 }
 
-.p-dialog .p-dialog-footer {
+.p-dialog .p-dialog-content,
+.p-confirmdialog .p-dialog-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.p-dialog .p-dialog-footer,
+.p-confirmdialog .p-dialog-footer {
+  flex-shrink: 0;
   border-top: 1px solid var(--border);
   padding-top: 14px;
 }
