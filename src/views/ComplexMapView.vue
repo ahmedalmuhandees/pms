@@ -7,13 +7,13 @@ import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 import Dialog from 'primevue/dialog'
 import ProgressSpinner from 'primevue/progressspinner'
-import type { Block, Building, Complex, CreateReservationDto, Customer, Floor, Unit } from '@/types'
+import type { Block, Building, Complex, CreateReservationDto, Customer, Floor, Unit, UpdateUnitDto } from '@/types'
 import { ComplexLayoutType, ReservationStatus, UnitStatus, UnitUi } from '@/types'
 import { getComplexes } from '@/api/complexes'
 import { getBlocks } from '@/api/blocks'
 import { getBuildings } from '@/api/buildings'
 import { getFloors } from '@/api/floors'
-import { getUnits } from '@/api/units'
+import { getUnits, updateUnit } from '@/api/units'
 import { getCustomers } from '@/api/customers'
 import { createReservation } from '@/api/reservations'
 import { getErrorMessage } from '@/api/client'
@@ -23,7 +23,6 @@ import {
   complexLayoutTypeOptions,
   formatMoney,
   labelOf,
-  reservationStatusOptions,
   unitStatusOptions,
   unitTypeOptions,
   unitUiOptions,
@@ -63,6 +62,7 @@ const reservationDialogVisible = ref(false)
 const savingReservation = ref(false)
 const reservationDateModel = ref<Date | null>(null)
 const expireDateModel = ref<Date | null>(null)
+const originalUnitStatus = ref<UnitStatus | null>(null)
 
 const reservationForm = reactive<CreateReservationDto>({
   reservationDate: new Date().toISOString(),
@@ -73,6 +73,7 @@ const reservationForm = reactive<CreateReservationDto>({
   customerId: '',
   complexId: '',
 })
+const selectedUnitStatus = ref<UnitStatus>(UnitStatus.Reserved)
 
 const complexOptions = computed(() =>
   asSelectOptions(complexes.value, (c) => c.nameAr || c.name || c.id),
@@ -189,6 +190,34 @@ function defaultExpireDate(from: Date) {
   return expire
 }
 
+function reservationStatusForUnitStatus(status: UnitStatus): ReservationStatus {
+  if (status === UnitStatus.Sold) return ReservationStatus.Converted
+  if (status === UnitStatus.Reserved || status === UnitStatus.Rented) return ReservationStatus.Confirmed
+  return ReservationStatus.Pending
+}
+
+function unitToUpdateDto(unit: Unit, status: UnitStatus): UpdateUnitDto {
+  return {
+    unitNumber: unit.unitNumber,
+    unitType: unit.unitType,
+    area: unit.area,
+    bedrooms: unit.bedrooms,
+    bathrooms: unit.bathrooms,
+    parkingCount: unit.parkingCount,
+    gardenArea: unit.gardenArea,
+    roofArea: unit.roofArea,
+    direction: unit.direction,
+    floorLevel: unit.floorLevel,
+    status,
+    price: unit.price,
+    cost: unit.cost,
+    notes: unit.notes,
+    unitUi: unit.unitUi ?? UnitUi.MiddleFront,
+    floorId: unit.floorId,
+    complexId: unit.complexId,
+  }
+}
+
 async function loadComplexes() {
   loadingComplexes.value = true
   try {
@@ -297,11 +326,14 @@ async function openReservationDialog() {
   const today = new Date()
   reservationDateModel.value = today
   expireDateModel.value = defaultExpireDate(today)
+  originalUnitStatus.value = unit.status
+  selectedUnitStatus.value = UnitStatus.Reserved
+  unit.status = UnitStatus.Reserved
   Object.assign(reservationForm, {
     reservationDate: today.toISOString(),
     reservationAmount: unit.price ? Math.round(unit.price * 0.1) : 0,
     expireDate: defaultExpireDate(today).toISOString(),
-    status: ReservationStatus.Pending,
+    status: ReservationStatus.Confirmed,
     unitId: unit.id,
     customerId: '',
     complexId: unit.complexId || selectedComplexId.value || '',
@@ -331,12 +363,18 @@ async function saveReservation() {
     return
   }
 
+  const unit = selectedUnit.value
+  if (!unit) return
+
   reservationForm.reservationDate = reservationDateModel.value.toISOString()
   reservationForm.expireDate = expireDateModel.value.toISOString()
+  reservationForm.status = reservationStatusForUnitStatus(selectedUnitStatus.value)
   savingReservation.value = true
   try {
     await createReservation({ ...reservationForm })
-    notify.success('تم إنشاء الحجز بنجاح')
+    await updateUnit(unit.id, unitToUpdateDto(unit, selectedUnitStatus.value))
+    originalUnitStatus.value = null
+    notify.success('تم إنشاء الحجز وتحديث حالة الوحدة')
     reservationDialogVisible.value = false
     await loadMap()
   } catch (error) {
@@ -345,6 +383,27 @@ async function saveReservation() {
     savingReservation.value = false
   }
 }
+
+function closeReservationDialog() {
+  if (selectedUnit.value && originalUnitStatus.value != null) {
+    selectedUnit.value.status = originalUnitStatus.value
+  }
+  originalUnitStatus.value = null
+  reservationDialogVisible.value = false
+}
+
+watch(selectedUnitStatus, (status) => {
+  if (reservationDialogVisible.value && selectedUnit.value) {
+    selectedUnit.value.status = status
+  }
+})
+
+watch(reservationDialogVisible, (visible) => {
+  if (!visible && originalUnitStatus.value != null && selectedUnit.value) {
+    selectedUnit.value.status = originalUnitStatus.value
+    originalUnitStatus.value = null
+  }
+})
 
 watch(selectedComplexId, () => {
   void loadMap()
@@ -669,6 +728,12 @@ onMounted(async () => {
           <span class="reserve-unit-summary__label">السعر</span>
           <strong>{{ formatMoney(selectedUnit.price) }}</strong>
         </div>
+        <div>
+          <span class="reserve-unit-summary__label">حالة الوحدة</span>
+          <span class="status-pill" :class="statusClass(selectedUnitStatus)">
+            {{ labelOf(unitStatusOptions, selectedUnitStatus) }}
+          </span>
+        </div>
       </div>
 
       <div class="form-grid">
@@ -699,10 +764,10 @@ onMounted(async () => {
           <InputNumber v-model="reservationForm.reservationAmount" :min="0" />
         </div>
         <div class="field">
-          <label>حالة الحجز</label>
+          <label>حالة الوحدة</label>
           <Select
-            v-model="reservationForm.status"
-            :options="reservationStatusOptions"
+            v-model="selectedUnitStatus"
+            :options="unitStatusOptions"
             option-label="label"
             option-value="value"
             placeholder="اختر الحالة"
@@ -718,7 +783,7 @@ onMounted(async () => {
             label="إلغاء"
             severity="secondary"
             outlined
-            @click="reservationDialogVisible = false"
+            @click="closeReservationDialog"
           />
           <Button
             label="تأكيد الحجز"
@@ -1247,7 +1312,7 @@ onMounted(async () => {
 
 .reserve-unit-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
   padding: 12px;
