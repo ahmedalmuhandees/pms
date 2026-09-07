@@ -7,8 +7,9 @@ import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 import Dialog from 'primevue/dialog'
 import ProgressSpinner from 'primevue/progressspinner'
-import type { Block, Building, Complex, CreateReservationDto, Customer, Floor, Unit, UpdateUnitDto } from '@/types'
+import type { Complex, CreateReservationDto, Customer, Unit, UpdateUnitDto } from '@/types'
 import { ComplexLayoutType, ReservationStatus, UnitStatus, UnitUi } from '@/types'
+import type { MapBlock, MapBuilding } from '@/types/complexMap'
 import { getComplexes } from '@/api/complexes'
 import { getBlocks } from '@/api/blocks'
 import { getBuildings } from '@/api/buildings'
@@ -28,22 +29,8 @@ import {
   unitUiOptions,
 } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
+import Complex3DViewer from '@/components/complex3d/Complex3DViewer.vue'
 import { FLOOR_BACK_ROW, FLOOR_FRONT_ROW } from '@/utils/complexBuilder'
-
-interface MapFloor {
-  floor: Floor
-  units: Unit[]
-}
-
-interface MapBuilding {
-  building: Building
-  floors: MapFloor[]
-}
-
-interface MapBlock {
-  block: Block
-  buildings: MapBuilding[]
-}
 
 const notify = useNotify()
 const router = useRouter()
@@ -74,6 +61,7 @@ const reservationForm = reactive<CreateReservationDto>({
   complexId: '',
 })
 const selectedUnitStatus = ref<UnitStatus>(UnitStatus.Reserved)
+const show3d = ref(false)
 
 const complexOptions = computed(() =>
   asSelectOptions(complexes.value, (c) => c.nameAr || c.name || c.id),
@@ -307,12 +295,33 @@ async function loadCustomersForComplex(complexId: string) {
   }
 }
 
-function selectUnit(unit: Unit) {
+function selectUnit(unit: Unit | null) {
   selectedUnit.value = unit
+}
+
+function open3dView() {
+  if (!selectedComplexId.value) {
+    notify.warning('اختر مجمعاً أولاً')
+    return
+  }
+  if (loadingMap.value) {
+    notify.warning('انتظر حتى يكتمل تحميل الخريطة')
+    return
+  }
+  if (!mapBlocks.value.length) {
+    notify.warning('لا يوجد هيكل عقاري لعرضه ثلاثياً')
+    return
+  }
+  show3d.value = true
 }
 
 function openUnit(unit: Unit) {
   void router.push(`/units/${unit.id}`)
+}
+
+function openUnitFrom3d(unit: Unit) {
+  show3d.value = false
+  openUnit(unit)
 }
 
 async function openReservationDialog() {
@@ -327,13 +336,12 @@ async function openReservationDialog() {
   reservationDateModel.value = today
   expireDateModel.value = defaultExpireDate(today)
   originalUnitStatus.value = unit.status
-  selectedUnitStatus.value = UnitStatus.Reserved
-  unit.status = UnitStatus.Reserved
+  selectedUnitStatus.value = unit.status
   Object.assign(reservationForm, {
     reservationDate: today.toISOString(),
     reservationAmount: unit.price ? Math.round(unit.price * 0.1) : 0,
     expireDate: defaultExpireDate(today).toISOString(),
-    status: ReservationStatus.Confirmed,
+    status: ReservationStatus.Pending,
     unitId: unit.id,
     customerId: '',
     complexId: unit.complexId || selectedComplexId.value || '',
@@ -445,6 +453,12 @@ onMounted(async () => {
             checkmark
             append-to="body"
             class="toolbar__select toolbar__select--sm"
+          />
+          <Button
+            label="عرض المجمع 3D"
+            icon="pi pi-box"
+            :disabled="!selectedComplexId || loadingMap || mapBlocks.length === 0"
+            @click="open3dView"
           />
         </div>
       </template>
@@ -794,6 +808,19 @@ onMounted(async () => {
         </div>
       </template>
     </Dialog>
+
+    <Teleport to="body">
+      <Complex3DViewer
+        v-if="show3d"
+        :blocks="mapBlocks"
+        :layout-mode="layoutMode"
+        :complex-name="selectedComplex?.nameAr || selectedComplex?.name || 'المجمع'"
+        :selected-unit="selectedUnit"
+        @close="show3d = false"
+        @select="selectUnit"
+        @open="openUnitFrom3d"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -806,6 +833,7 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  align-items: center;
 }
 
 .toolbar__select {
