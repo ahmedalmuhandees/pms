@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // @ts-nocheck — TresJS mesh props accept tuples at runtime; vue-tsc types them as Vector3.
 import { computed, onBeforeUnmount, shallowRef } from 'vue'
-import { ContactShadows, Html, OrbitControls, Sky, Stars } from '@tresjs/cientos'
+import { ContactShadows, Html, OrbitControls, Sky } from '@tresjs/cientos'
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from 'three'
 import type { Unit } from '@/types'
 import type { Complex3dLayout, SceneBuildingMesh, SceneUnitMesh } from '@/utils/complex3dLayout'
@@ -9,7 +9,6 @@ import type { Complex3dLayout, SceneBuildingMesh, SceneUnitMesh } from '@/utils/
 const props = defineProps<{
   layout: Complex3dLayout
   selectedUnitId?: string | null
-  isNight?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -22,7 +21,6 @@ const maxPolar = Math.PI / 2.05
 const maxDistance = computed(() => Math.max(80, props.layout.groundSize * 1.8))
 const contactScale = computed(() => props.layout.groundSize * 1.1)
 const fountain = computed(() => props.layout.fountain)
-const night = computed(() => Boolean(props.isNight))
 
 function makeNoiseTexture(base: [number, number, number], specks: number, extra?: (ctx: CanvasRenderingContext2D) => void) {
   const canvas = document.createElement('canvas')
@@ -92,8 +90,7 @@ function balconyZ(unit: SceneUnitMesh) {
 }
 
 function windowEmissive(unit: SceneUnitMesh) {
-  if (isSelected(unit.id)) return night.value ? 0.95 : 0.62
-  return night.value ? 0.55 : 0.16
+  return isSelected(unit.id) ? 0.62 : 0.16
 }
 
 function towerY(building: SceneBuildingMesh) {
@@ -119,35 +116,15 @@ function towerY(building: SceneBuildingMesh) {
     :min-polar-angle="0.18"
   />
 
-  <Sky
-    v-if="!night"
-    :elevation="18"
-    :azimuth="160"
-    :turbidity="3.4"
-    :rayleigh="0.55"
-  />
-  <Sky
-    v-else
-    :elevation="-4"
-    :azimuth="200"
-    :turbidity="12"
-    :rayleigh="0.08"
-  />
-  <Stars v-if="night" :radius="180" :depth="40" :count="900" :size="0.18" />
-  <TresFog
-    :args="night ? ['#071018', 40, layout.groundSize * 1.7] : ['#c3d7e6', 70, layout.groundSize * 2.4]"
-  />
+  <Sky :elevation="18" :azimuth="160" :turbidity="3.4" :rayleigh="0.55" />
+  <TresFog :args="['#c3d7e6', 70, layout.groundSize * 2.4]" />
 
-  <TresAmbientLight :intensity="night ? 0.1 : 0.42" :color="night ? '#1a2433' : '#f2f4f8'" />
-  <TresHemisphereLight
-    :color="night ? '#1c2c48' : '#d7e9ff'"
-    :ground-color="night ? '#0d1210' : '#7d6b4e'"
-    :intensity="night ? 0.18 : 0.72"
-  />
+  <TresAmbientLight :intensity="0.42" color="#f2f4f8" />
+  <TresHemisphereLight color="#d7e9ff" ground-color="#7d6b4e" :intensity="0.72" />
   <TresDirectionalLight
-    :position="night ? [layout.sunPosition[0] * 0.4, layout.groundSize * 0.7, -layout.sunPosition[2]] : layout.sunPosition"
-    :color="night ? '#c5d4ee' : '#fff1d6'"
-    :intensity="night ? 0.28 : 2.15"
+    :position="layout.sunPosition"
+    color="#fff1d6"
+    :intensity="2.15"
     :cast-shadow="true"
     :shadow-mapSize="[2048, 2048]"
     :shadow-bias="-0.00025"
@@ -155,11 +132,7 @@ function towerY(building: SceneBuildingMesh) {
 
   <TresMesh :rotation="[halfPi, 0, 0]" :receive-shadow="true">
     <TresCircleGeometry :args="[layout.groundSize * 0.72, 72]" />
-    <TresMeshStandardMaterial
-      :color="night ? '#2a2d32' : '#3f4349'"
-      :map="asphaltMap"
-      :roughness="0.96"
-    />
+    <TresMeshStandardMaterial color="#3f4349" :map="asphaltMap" :roughness="0.96" />
   </TresMesh>
 
   <TresMesh
@@ -188,7 +161,7 @@ function towerY(building: SceneBuildingMesh) {
     :position="mark.position"
   >
     <TresBoxGeometry :args="mark.size" />
-    <TresMeshStandardMaterial :color="mark.color" :roughness="0.55" :emissive="night ? mark.color : '#000000'" :emissive-intensity="night ? 0.12 : 0" />
+    <TresMeshStandardMaterial :color="mark.color" :roughness="0.55" />
   </TresMesh>
 
   <TresMesh
@@ -244,15 +217,10 @@ function towerY(building: SceneBuildingMesh) {
     </TresMesh>
     <TresMesh :position="[0, 2.55, 0.32]" :cast-shadow="true">
       <TresBoxGeometry :args="[Math.min(14, Math.max(7, layout.gate.name.length * 0.55)), 1.15, 0.14]" />
-      <TresMeshStandardMaterial
-        color="#0b3d4a"
-        :emissive="night ? '#156574' : '#000000'"
-        :emissive-intensity="night ? 0.35 : 0"
-        :roughness="0.45"
-      />
+      <TresMeshStandardMaterial color="#0b3d4a" :roughness="0.45" />
     </TresMesh>
     <Html :position="[0, 2.55, 0.48]" center :distance-factor="18" wrapper-class="c3d-html">
-      <div class="c3d-gate-sign" :class="{ night }">{{ layout.gate.name }}</div>
+      <div class="c3d-gate-sign">{{ layout.gate.name }}</div>
     </Html>
   </TresGroup>
 
@@ -278,11 +246,11 @@ function towerY(building: SceneBuildingMesh) {
     </TresMesh>
     <TresMesh :position="[0, 2.15, 0]" :cast-shadow="true">
       <TresConeGeometry :args="[1.35, 2.1, 8]" />
-      <TresMeshStandardMaterial :color="night ? '#1d4a28' : '#2f6b3a'" :roughness="0.9" />
+      <TresMeshStandardMaterial color="#2f6b3a" :roughness="0.9" />
     </TresMesh>
     <TresMesh :position="[0, 2.85, 0]" :cast-shadow="true">
       <TresConeGeometry :args="[1.05, 1.7, 8]" />
-      <TresMeshStandardMaterial :color="night ? '#245532' : '#3b7d46'" :roughness="0.88" />
+      <TresMeshStandardMaterial color="#3b7d46" :roughness="0.88" />
     </TresMesh>
   </TresGroup>
 
@@ -296,17 +264,9 @@ function towerY(building: SceneBuildingMesh) {
       <TresMeshStandardMaterial
         color="#ffe7b0"
         emissive="#ffd58a"
-        :emissive-intensity="night ? 2.4 : 0.35"
+        :emissive-intensity="0.35"
       />
     </TresMesh>
-    <TresPointLight
-      v-if="night && lamp.id.endsWith('-a')"
-      :position="[0, 4.7, 0]"
-      color="#ffd9a0"
-      :intensity="8"
-      :distance="18"
-      :decay="2"
-    />
   </TresGroup>
 
   <TresGroup
@@ -396,19 +356,19 @@ function towerY(building: SceneBuildingMesh) {
         :distance-factor="10"
         wrapper-class="c3d-html"
       >
-        <div class="c3d-unit-num" :class="{ selected: isSelected(unitMesh.id), night }">
+        <div class="c3d-unit-num" :class="{ selected: isSelected(unitMesh.id) }">
           {{ unitMesh.number }}
         </div>
       </Html>
     </template>
 
     <Html :position="building.labelPosition" center :distance-factor="26" wrapper-class="c3d-html">
-      <div class="c3d-label" :class="{ night }">{{ building.name }}</div>
+      <div class="c3d-label">{{ building.name }}</div>
     </Html>
   </TresGroup>
 
   <ContactShadows
-    :opacity="night ? 0.22 : 0.42"
+    :opacity="0.42"
     :scale="contactScale"
     :blur="2.4"
     :far="28"

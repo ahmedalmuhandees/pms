@@ -92,12 +92,6 @@ export interface Complex3dLayout {
   sunPosition: Vec3
 }
 
-/** بعد العصر (~15:30) حتى الفجر (~05:00) يُعرض الوضع الليلي */
-export function isNightAfterAsr(date = new Date()) {
-  const minutes = date.getHours() * 60 + date.getMinutes()
-  return minutes >= 15 * 60 + 30 || minutes < 5 * 60
-}
-
 function hash01(n: number) {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453
   return x - Math.floor(x)

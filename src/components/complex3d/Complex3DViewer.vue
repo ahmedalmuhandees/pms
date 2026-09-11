@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import Button from 'primevue/button'
 import { TresCanvas } from '@tresjs/core'
 import { PCFShadowMap } from 'three'
@@ -7,7 +7,6 @@ import type { Unit } from '@/types'
 import type { ComplexMapLayoutMode, MapBlock } from '@/types/complexMap'
 import {
   buildComplex3dLayout,
-  isNightAfterAsr,
   UNIT_STATUS_3D_COLORS,
 } from '@/utils/complex3dLayout'
 import { formatMoney, labelOf, unitStatusOptions, unitTypeOptions } from '@/utils/enums'
@@ -29,10 +28,6 @@ const emit = defineEmits<{
 const layout = computed(() =>
   buildComplex3dLayout(props.blocks, props.layoutMode, props.complexName),
 )
-
-const clock = ref(Date.now())
-const isNight = computed(() => isNightAfterAsr(new Date(clock.value)))
-let timer: ReturnType<typeof setInterval> | undefined
 
 const layoutHint = computed(() => {
   if (props.layoutMode === 'horizontal') return 'فلل على الشوارع الداخلية'
@@ -66,21 +61,17 @@ function onKey(event: KeyboardEvent) {
 onMounted(() => {
   document.body.style.overflow = 'hidden'
   window.addEventListener('keydown', onKey)
-  timer = window.setInterval(() => {
-    clock.value = Date.now()
-  }, 60_000)
 })
 
 onUnmounted(() => {
   document.body.style.overflow = ''
   document.body.style.cursor = ''
   window.removeEventListener('keydown', onKey)
-  if (timer) window.clearInterval(timer)
 })
 </script>
 
 <template>
-  <div class="c3d" :class="{ 'c3d--night': isNight }">
+  <div class="c3d">
     <header class="c3d__bar">
       <div class="c3d__title">
         <i class="pi pi-box" />
@@ -90,9 +81,6 @@ onUnmounted(() => {
             {{ complexName }} · {{ layoutHint }} · اسحب للتدوير · مرّر للتكبير · اضغط وحدة للاختيار
           </p>
         </div>
-        <span class="c3d__mode" :class="{ night: isNight }">
-          {{ isNight ? 'ليلي · بعد العصر' : 'نهاري' }}
-        </span>
       </div>
       <Button
         label="إغلاق"
@@ -108,14 +96,13 @@ onUnmounted(() => {
         shadows
         :alpha="false"
         :shadow-map-type="PCFShadowMap"
-        :clear-color="isNight ? '#071018' : '#9ec7dc'"
+        clear-color="#9ec7dc"
         class="c3d__canvas"
         @pointermissed="emit('select', null)"
       >
         <Complex3DScene
           :layout="layout"
           :selected-unit-id="selectedUnit?.id"
-          :is-night="isNight"
           @select="emit('select', $event)"
           @open="emit('open', $event)"
         />
@@ -194,21 +181,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   min-width: 0;
-}
-
-.c3d__mode {
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 800;
-  background: rgba(255, 255, 255, 0.14);
-  color: #e6f3f5;
-}
-
-.c3d__mode.night {
-  background: rgba(255, 213, 138, 0.18);
-  color: #ffe7b0;
 }
 
 .c3d__title i {
@@ -357,11 +329,6 @@ onUnmounted(() => {
   box-shadow: 0 4px 12px rgba(6, 40, 48, 0.2);
 }
 
-.c3d-label.night {
-  background: rgba(7, 16, 24, 0.88);
-  box-shadow: 0 0 10px rgba(255, 213, 138, 0.25);
-}
-
 .c3d-unit-num {
   padding: 1px 5px;
   border-radius: 4px;
@@ -381,11 +348,6 @@ onUnmounted(() => {
   outline: 1px solid #9ecbd3;
 }
 
-.c3d-unit-num.night {
-  background: rgba(7, 16, 24, 0.9);
-  box-shadow: 0 0 6px rgba(255, 213, 138, 0.35);
-}
-
 .c3d-gate-sign {
   padding: 6px 14px;
   border-radius: 6px;
@@ -397,11 +359,5 @@ onUnmounted(() => {
   font-family: inherit;
   border: 1px solid #c9a227;
   box-shadow: 0 6px 16px rgba(6, 40, 48, 0.35);
-}
-
-.c3d-gate-sign.night {
-  background: #062830;
-  color: #ffe7b0;
-  box-shadow: 0 0 18px rgba(201, 162, 39, 0.45);
 }
 </style>
