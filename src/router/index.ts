@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { isStaleChunkError, reloadOnStaleChunk } from '@/utils/staleChunkReload'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -115,6 +116,12 @@ router.beforeEach((to) => {
   }
   if (!auth.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } }
   return true
+})
+
+router.onError((error, to) => {
+  if (isStaleChunkError(error)) {
+    reloadOnStaleChunk(to.fullPath)
+  }
 })
 
 export default router

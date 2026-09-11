@@ -10,7 +10,10 @@ import 'primeicons/primeicons.css'
 import App from './App.vue'
 import router from './router'
 import { arLocale } from './primevue-locale'
+import { installStaleChunkReload } from './utils/staleChunkReload'
 import './styles/main.css'
+
+installStaleChunkReload()
 
 const AppPreset = definePreset(Aura, {
   semantic: {
