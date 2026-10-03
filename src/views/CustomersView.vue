@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -29,6 +30,7 @@ import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
+const router = useRouter()
 const complexes = ref<Complex[]>([])
 
 const {
@@ -109,6 +111,10 @@ function openEdit(row: Customer) {
   })
   birthDateModel.value = row.birthDate ? new Date(row.birthDate) : null
   dialogVisible.value = true
+}
+
+function openProfile(row: Customer) {
+  router.push({ name: 'customer-detail', params: { id: row.id } })
 }
 
 async function save() {
@@ -226,9 +232,14 @@ onMounted(async () => {
           <Column header="الميلاد" style="width: 120px">
             <template #body="{ data }">{{ formatDate(data.birthDate) }}</template>
           </Column>
-          <Column header="إجراءات" style="width: 130px">
+          <Column header="إجراءات" style="width: 160px">
             <template #body="{ data }">
-              <RowActions @edit="openEdit(data)" @remove="remove(data)" />
+              <RowActions
+                show-details
+                @details="openProfile(data)"
+                @edit="openEdit(data)"
+                @remove="remove(data)"
+              />
             </template>
           </Column>
           <template #empty>

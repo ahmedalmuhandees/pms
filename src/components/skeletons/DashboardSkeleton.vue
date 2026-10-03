@@ -8,40 +8,36 @@ import Skeleton from 'primevue/skeleton'
       <div class="dash-skeleton__hero-copy">
         <Skeleton width="6rem" height="0.75rem" border-radius="6px" class="block" />
         <Skeleton width="min(100%, 28rem)" height="1.5rem" border-radius="8px" class="block mt" />
-        <Skeleton width="min(100%, 20rem)" height="0.9rem" border-radius="8px" class="block mt" />
+        <Skeleton width="min(100%, 22rem)" height="0.9rem" border-radius="8px" class="block mt" />
       </div>
       <div class="dash-skeleton__hero-metrics">
-        <Skeleton v-for="n in 3" :key="n" width="6.5rem" height="4.2rem" border-radius="16px" />
+        <Skeleton v-for="n in 4" :key="n" width="5.5rem" height="4.2rem" border-radius="16px" />
       </div>
     </div>
 
-    <div class="dash-skeleton__section">
-      <Skeleton width="9rem" height="1.1rem" border-radius="8px" />
-      <Skeleton width="14rem" height="0.8rem" border-radius="8px" class="mt-sm" />
-      <div class="dash-skeleton__featured">
-        <div v-for="n in 4" :key="n" class="feature-skel">
-          <div class="feature-skel__top">
-            <Skeleton width="3.2rem" height="3.2rem" border-radius="16px" />
-            <Skeleton width="3.5rem" height="1.5rem" border-radius="999px" />
-          </div>
-          <Skeleton width="4.5rem" height="2rem" border-radius="8px" class="mt" />
-          <Skeleton width="55%" height="0.95rem" border-radius="8px" class="mt" />
-          <Skeleton width="80%" height="0.7rem" border-radius="8px" class="mt-sm" />
+    <div class="dash-skeleton__kpis">
+      <div v-for="n in 6" :key="n" class="kpi-skel">
+        <Skeleton width="2.6rem" height="2.6rem" border-radius="13px" />
+        <div class="kpi-skel__body">
+          <Skeleton width="4.5rem" height="0.7rem" border-radius="6px" />
+          <Skeleton width="3.5rem" height="1.3rem" border-radius="8px" class="mt-sm" />
+          <Skeleton width="6rem" height="0.65rem" border-radius="6px" class="mt-sm" />
         </div>
       </div>
     </div>
 
-    <div class="dash-skeleton__section">
-      <Skeleton width="8rem" height="1.1rem" border-radius="8px" />
-      <div class="dash-skeleton__metrics">
-        <div v-for="n in 3" :key="n" class="metric-skel">
-          <Skeleton width="3rem" height="3rem" border-radius="15px" />
-          <div class="metric-skel__body">
-            <Skeleton width="4rem" height="0.75rem" border-radius="6px" />
-            <Skeleton width="3.5rem" height="1.35rem" border-radius="8px" class="mt-sm" />
-            <Skeleton width="5rem" height="0.65rem" border-radius="6px" class="mt-sm" />
-          </div>
-        </div>
+    <div class="dash-skeleton__charts">
+      <div v-for="n in 4" :key="n" class="chart-skel">
+        <Skeleton width="9rem" height="1rem" border-radius="8px" />
+        <Skeleton width="12rem" height="0.75rem" border-radius="8px" class="mt-sm" />
+        <Skeleton width="100%" height="14rem" border-radius="14px" class="mt" />
+      </div>
+    </div>
+
+    <div class="dash-skeleton__bottom">
+      <div v-for="n in 3" :key="n" class="chart-skel">
+        <Skeleton width="8rem" height="1rem" border-radius="8px" />
+        <Skeleton width="100%" height="12rem" border-radius="14px" class="mt" />
       </div>
     </div>
   </div>
@@ -51,7 +47,7 @@ import Skeleton from 'primevue/skeleton'
 .dash-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 20px;
 }
 
 .dash-skeleton__hero {
@@ -76,71 +72,80 @@ import Skeleton from 'primevue/skeleton'
   gap: 10px;
 }
 
-.dash-skeleton__section {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dash-skeleton__featured {
+.dash-skeleton__kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 12px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.feature-skel {
-  padding: 20px 18px;
-  min-height: 188px;
-  border-radius: 22px;
-  border: 1px solid var(--border);
-  background: #fff;
-  box-shadow: var(--shadow-sm);
-}
-
-.feature-skel__top {
+.kpi-skel {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 12px;
+  padding: 16px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
-.dash-skeleton__metrics {
+.kpi-skel__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-skeleton__charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dash-skeleton__bottom {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.chart-skel {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.block {
+  display: block;
+}
+
+.mt {
   margin-top: 12px;
 }
 
-.metric-skel {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  padding: 18px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--border);
-  background: #fff;
+.mt-sm {
+  margin-top: 8px;
 }
 
-.metric-skel__body {
-  flex: 1;
-}
-
-.block { display: block; }
-.mt { margin-top: 12px; display: block; }
-.mt-sm { margin-top: 8px; display: block; }
-
-@media (max-width: 1100px) {
-  .dash-skeleton__featured {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 1280px) {
+  .dash-skeleton__kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .dash-skeleton__metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+  .dash-skeleton__bottom {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
-@media (max-width: 640px) {
-  .dash-skeleton__featured,
-  .dash-skeleton__metrics {
+@media (max-width: 900px) {
+  .dash-skeleton__charts,
+  .dash-skeleton__bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-skeleton__kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .dash-skeleton__kpis {
     grid-template-columns: 1fr;
   }
 }

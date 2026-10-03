@@ -66,13 +66,23 @@ export interface StructureConfig {
   cost: number
   countByUi: UnitCountByUi
   areaByUi: Record<UnitUi, number>
+  /** Per-unit areas for horizontal villas or vertical floor units */
   rowAreas: number[]
   horizontalPickedIndices: number[]
+  /** Manual pick order for individual floor units (vertical) */
+  verticalPickedIndices: number[]
   /** Physical slot that receives sequence number 1 */
   sequenceStartUi: UnitUi
   sequenceDirection: SequenceDirection
   /** Explicit numbering order when sequenceDirection is manual */
   sequenceOrder: UnitUi[]
+}
+
+export interface FloorUnitCell {
+  index: number
+  unitUi: UnitUi
+  side: 'front' | 'back'
+  label: string
 }
 
 export interface PreviewUnit {
@@ -94,10 +104,6 @@ export const FLOOR_BACK_ROW: UnitUi[] = [
   UnitUi.MiddleBack,
   UnitUi.CornerBackLeft,
 ]
-
-const FRONT_ROW = FLOOR_FRONT_ROW
-const BACK_ROW = FLOOR_BACK_ROW
-const ALL_SLOTS: UnitUi[] = [...FRONT_ROW, ...BACK_ROW]
 
 /** Clockwise ring around the floor (front at top) */
 export const FLOOR_CLOCKWISE_RING: UnitUi[] = [
@@ -251,47 +257,92 @@ export function isFrontUnitUi(unitUi: UnitUi): boolean {
 }
 
 /**
- * مواضع الطابق حسب عدد الوحدات:
- * 1 وسط أمامي، 2 أمام/خلف، 3 الواجهة الأمامية، 4 الزوايا، 5 زوايا + وسط أمامي،
- * 6 المواضع الستة، وما زاد يُوزَّع أولاً على الوسط ثم الزوايا.
+ * صف وحدات فردية (يمين → يسار): زاوية يمين، وسطيات، زاوية يسار.
+ * كل وحدة خانة مستقلة وليست عدّاداً مكرراً على نفس الموضع.
  */
-export function floorUnitSlots(unitsPerFloor: number): UnitUi[] {
-  const count = Math.max(1, unitsPerFloor)
-  if (count === 1) return [UnitUi.MiddleFront]
-  if (count === 2) return [UnitUi.MiddleFront, UnitUi.MiddleBack]
-  if (count === 3) return [...FRONT_ROW]
-  if (count === 4) {
+export function rowUnitSlots(
+  count: number,
+  side: 'front' | 'back',
+): UnitUi[] {
+  const n = Math.max(0, count)
+  if (n === 0) return []
+  if (side === 'front') {
+    if (n === 1) return [UnitUi.MiddleFront]
+    if (n === 2) return [UnitUi.CornerFrontRight, UnitUi.CornerFrontLeft]
     return [
       UnitUi.CornerFrontRight,
+      ...Array.from({ length: n - 2 }, () => UnitUi.MiddleFront),
       UnitUi.CornerFrontLeft,
-      UnitUi.CornerBackRight,
-      UnitUi.CornerBackLeft,
     ]
   }
-  if (count === 5) {
-    return [
-      UnitUi.CornerFrontRight,
-      UnitUi.MiddleFront,
-      UnitUi.CornerFrontLeft,
-      UnitUi.CornerBackRight,
-      UnitUi.CornerBackLeft,
-    ]
-  }
-  if (count === 6) return [...ALL_SLOTS]
-
-  const extras = [
-    UnitUi.MiddleFront,
-    UnitUi.MiddleBack,
-    UnitUi.CornerFrontRight,
-    UnitUi.CornerFrontLeft,
+  if (n === 1) return [UnitUi.MiddleBack]
+  if (n === 2) return [UnitUi.CornerBackRight, UnitUi.CornerBackLeft]
+  return [
     UnitUi.CornerBackRight,
+    ...Array.from({ length: n - 2 }, () => UnitUi.MiddleBack),
     UnitUi.CornerBackLeft,
   ]
-  const slots = [...ALL_SLOTS]
-  for (let i = 6; i < count; i++) {
-    slots.push(extras[(i - 6) % extras.length]!)
+}
+
+/**
+ * يقسم وحدات الطابق إلى واجهة أمامية وخلفية بالتساوي تقريباً.
+ * مثال: 8 وحدات → 4 أمام + 4 خلف (كل خانة وحدة واحدة).
+ */
+export function verticalFloorCells(unitsPerFloor: number): FloorUnitCell[] {
+  const n = Math.max(1, Math.min(MAX_UNITS_PER_FLOOR, unitsPerFloor))
+  const frontCount = Math.ceil(n / 2)
+  const backCount = n - frontCount
+  const front = rowUnitSlots(frontCount, 'front')
+  const back = rowUnitSlots(backCount, 'back')
+  const cells: FloorUnitCell[] = []
+  front.forEach((unitUi, i) => {
+    cells.push({
+      index: i,
+      unitUi,
+      side: 'front',
+      label: frontCount === 1 ? 'وسط أمامي' : i === 0 ? 'يمين أمامي' : i === frontCount - 1 ? 'يسار أمامي' : `وسط أمامي ${i}`,
+    })
+  })
+  back.forEach((unitUi, i) => {
+    const index = frontCount + i
+    cells.push({
+      index,
+      unitUi,
+      side: 'back',
+      label: backCount === 1 ? 'وسط خلفي' : i === 0 ? 'يمين خلفي' : i === backCount - 1 ? 'يسار خلفي' : `وسط خلفي ${i}`,
+    })
+  })
+  return cells
+}
+
+/** ترتيب ترقيم الوحدات الفردية في الطابق */
+export function resolveVerticalIndexOrder(
+  count: number,
+  direction: SequenceDirection = 'clockwise',
+  pickedIndices: number[] = [],
+): number[] {
+  const n = Math.max(1, Math.min(MAX_UNITS_PER_FLOOR, count))
+  const frontCount = Math.ceil(n / 2)
+  const base = Array.from({ length: n }, (_, i) => i)
+  if (direction === 'manual') {
+    const picked = pickedIndices.filter((i) => i >= 0 && i < n)
+    const rest = base.filter((i) => !picked.includes(i))
+    return [...picked, ...rest]
   }
-  return slots
+  // أمام: يمين→يسار ثم خلف: يسار→يمين (لفّ حول الطابق)
+  const clockwise = [
+    ...Array.from({ length: frontCount }, (_, i) => i),
+    ...Array.from({ length: n - frontCount }, (_, i) => n - 1 - i),
+  ]
+  if (direction === 'counterclockwise') return [...clockwise].reverse()
+  return clockwise
+}
+
+/**
+ * مواضع الطابق كقائمة UnitUi فردية (للتوافق مع countByUi).
+ */
+export function floorUnitSlots(unitsPerFloor: number): UnitUi[] {
+  return verticalFloorCells(unitsPerFloor).map((cell) => cell.unitUi)
 }
 
 export function unitUiForIndex(unitIndex: number, unitsPerFloor: number): UnitUi {
@@ -366,28 +417,25 @@ export function buildStructurePreview(config: StructureConfig): StructurePreview
     } else {
       for (let g = 0; g < config.buildingsPerBlock; g++) {
         const buildingFloors: PreviewFloor[] = []
+        const cells = verticalFloorCells(config.unitsPerFloor)
+        const order = resolveVerticalIndexOrder(
+          cells.length,
+          config.sequenceDirection ?? 'clockwise',
+          config.verticalPickedIndices ?? [],
+        )
         for (let f = 0; f < config.floorsPerBuilding; f++) {
           const floorNumber = config.startFloor + f
           const floorUnits: PreviewUnit[] = []
-          const countByUi =
-            config.countByUi && totalUnitsFromCounts(config.countByUi) > 0
-              ? config.countByUi
-              : countsFromSlots(floorUnitSlots(config.unitsPerFloor))
-          const slots = orderedFloorSlots(
-            countByUi,
-            config.sequenceStartUi ?? UnitUi.MiddleFront,
-            config.sequenceDirection ?? 'clockwise',
-            config.sequenceOrder ?? [],
-          )
-          for (let u = 0; u < slots.length; u++) {
-            const unitUi = slots[u]!
-            const sequenceNumber = u + 1
+          for (let s = 0; s < order.length; s++) {
+            const visualIndex = order[s]!
+            const cell = cells[visualIndex]!
+            const sequenceNumber = s + 1
             floorUnits.push({
               unitNumber: unitNumber(blockIndex, g, floorNumber, sequenceNumber),
               floorNumber,
-              unitUi,
+              unitUi: cell.unitUi,
               sequenceNumber,
-              area: config.areaByUi?.[unitUi] ?? config.area,
+              area: config.rowAreas?.[visualIndex] ?? config.area,
             })
             units++
           }

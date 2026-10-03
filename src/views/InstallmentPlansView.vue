@@ -48,6 +48,7 @@ const form = reactive<CreateInstallmentPlanDto>({
   totalInstallments: 0,
   installmentAmount: 0,
   interestRate: 0,
+  paymentIntervalMonths: 1,
   firstDueDate: new Date().toISOString(),
   lastDueDate: new Date().toISOString(),
   contractId: '',
@@ -87,6 +88,7 @@ function openCreate() {
     totalInstallments: 0,
     installmentAmount: 0,
     interestRate: 0,
+    paymentIntervalMonths: 1,
     firstDueDate: new Date().toISOString(),
     lastDueDate: new Date().toISOString(),
     contractId: '',
@@ -103,6 +105,7 @@ function openEdit(row: InstallmentPlan) {
     totalInstallments: row.totalInstallments,
     installmentAmount: row.installmentAmount,
     interestRate: row.interestRate,
+    paymentIntervalMonths: row.paymentIntervalMonths || 1,
     firstDueDate: row.firstDueDate,
     lastDueDate: row.lastDueDate,
     contractId: row.contractId,
@@ -208,6 +211,9 @@ onMounted(async () => {
         <Column header="الفائدة %" style="width: 100px">
           <template #body="{ data }">{{ data.interestRate }}</template>
         </Column>
+        <Column header="كل (أشهر)" style="width: 100px">
+          <template #body="{ data }">{{ data.paymentIntervalMonths }}</template>
+        </Column>
         <Column header="أول استحقاق" style="width: 120px">
           <template #body="{ data }">{{ formatDate(data.firstDueDate) }}</template>
         </Column>
@@ -273,6 +279,10 @@ onMounted(async () => {
         <div class="field">
           <label>نسبة الفائدة</label>
           <InputNumber v-model="form.interestRate" :min="0" :max-fraction-digits="2" />
+        </div>
+        <div class="field">
+          <label>فترة الدفع (أشهر)</label>
+          <InputNumber v-model="form.paymentIntervalMonths" :min="1" />
         </div>
         <div class="field">
           <label>أول استحقاق</label>

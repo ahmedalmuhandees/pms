@@ -19,22 +19,16 @@ import {
   buildStructurePreview,
   countsFromSlots,
   defaultAreaByUi,
-  FLOOR_BACK_ROW,
-  FLOOR_FRONT_ROW,
   floorUnitSlots,
   HORIZONTAL_SEQUENCE_DIRECTION_OPTIONS,
   horizontalStreetSlots,
   horizontalUnitNumber,
   MAX_UNITS_PER_FLOOR,
-  MAX_UNITS_PER_SLOT,
-  orderedFloorSlots,
   resolveHorizontalIndexOrder,
-  sequenceNumbersForUi,
+  resolveVerticalIndexOrder,
   SEQUENCE_DIRECTION_OPTIONS,
-  syncedManualOrder,
-  totalUnitsFromCounts,
   unitNumber,
-  type PreviewUnit,
+  verticalFloorCells,
   type StructureConfig,
 } from '@/utils/complexBuilder'
 import PageHeader from '@/components/PageHeader.vue'
@@ -77,6 +71,7 @@ const structure = reactive<StructureConfig>({
   areaByUi: defaultAreaByUi(120),
   rowAreas: Array.from({ length: 6 }, () => 120),
   horizontalPickedIndices: [],
+  verticalPickedIndices: [],
   sequenceStartUi: UnitUi.MiddleFront,
   sequenceDirection: 'manual',
   sequenceOrder: [],
@@ -115,10 +110,9 @@ const preview = computed(() => buildStructurePreview(structure))
 
 const floorSampleNumber = computed(() => structure.startFloor || 1)
 
-const pickedOrder = ref<UnitUi[]>([])
 const isManualSequence = computed(() => structure.sequenceDirection === 'manual')
 const floorUnitTotal = computed(() =>
-  isHorizontal.value ? structure.buildingsPerBlock : totalUnitsFromCounts(structure.countByUi),
+  isHorizontal.value ? structure.buildingsPerBlock : structure.unitsPerFloor,
 )
 const isPickComplete = computed(() => {
   if (!isManualSequence.value) return true
@@ -126,7 +120,8 @@ const isPickComplete = computed(() => {
     if (structure.buildingsPerBlock <= 1) return true
     return structure.horizontalPickedIndices.length >= structure.buildingsPerBlock
   }
-  return pickedOrder.value.length >= floorUnitTotal.value && floorUnitTotal.value > 0
+  if (structure.unitsPerFloor <= 1) return true
+  return structure.verticalPickedIndices.length >= structure.unitsPerFloor
 })
 
 const PICK_ORDINALS = [
@@ -150,12 +145,12 @@ function pickStepTitle(stepNumber: number) {
 const nextPickNumber = computed(() => {
   const used = isHorizontal.value
     ? structure.horizontalPickedIndices.length
-    : pickedOrder.value.length
+    : structure.verticalPickedIndices.length
   return Math.min(used + 1, Math.max(floorUnitTotal.value, 1))
 })
 
 const nextPickPrompt = computed(() => {
-  if (!isManualSequence.value) return 'اضغط أي موضع لبدء التسلسل يدوياً'
+  if (!isManualSequence.value) return 'اضغط أي وحدة لبدء التسلسل يدوياً'
   if (isPickComplete.value) return 'اكتمل تحديد التسلسل'
   return `حدد ${pickStepTitle(nextPickNumber.value)}`
 })
@@ -182,19 +177,23 @@ const pickSteps = computed(() => {
       }
     })
   }
-  return Array.from({ length: floorUnitTotal.value }, (_, index) => {
-    const ui = pickedOrder.value[index]
+  const cells = verticalFloorCells(structure.unitsPerFloor)
+  const picked = structure.verticalPickedIndices
+  return Array.from({ length: cells.length }, (_, index) => {
+    const cellIndex = picked[index]
+    const cell = cellIndex != null ? cells[cellIndex] : undefined
     return {
       n: index + 1,
       title: pickStepTitle(index + 1),
-      ui,
-      label: ui
-        ? labelOf(unitUiOptions, ui)
-        : index === pickedOrder.value.length
-          ? nextPickPrompt.value
-          : 'بانتظار التحديد',
-      current: isManualSequence.value && index === pickedOrder.value.length && !isPickComplete.value,
-      done: index < pickedOrder.value.length,
+      ui: cell?.unitUi,
+      label:
+        cell != null
+          ? `وحدة ${cell.index + 1}`
+          : index === picked.length
+            ? nextPickPrompt.value
+            : 'بانتظار التحديد',
+      current: isManualSequence.value && index === picked.length && !isPickComplete.value,
+      done: index < picked.length,
     }
   })
 })
@@ -206,8 +205,8 @@ const floorAreaTotal = computed(() => {
       0,
     )
   }
-  return (Object.values(UnitUi) as UnitUi[]).reduce(
-    (sum, ui) => sum + (structure.countByUi[ui] || 0) * (structure.areaByUi[ui] || 0),
+  return verticalFloorCells(structure.unitsPerFloor).reduce(
+    (sum, _, index) => sum + (structure.rowAreas[index] || structure.area || 0),
     0,
   )
 })
@@ -237,161 +236,57 @@ const streetHouses = computed(() => {
   }))
 })
 
-const floorSequence = computed(() =>
-  orderedFloorSlots(
-    structure.countByUi,
-    structure.sequenceStartUi,
+const floorCells = computed(() => {
+  const cells = verticalFloorCells(structure.unitsPerFloor)
+  const order = resolveVerticalIndexOrder(
+    cells.length,
     structure.sequenceDirection,
-    structure.sequenceOrder,
-  ),
+    structure.verticalPickedIndices,
+  )
+  return cells.map((cell) => ({
+    ...cell,
+    area: structure.rowAreas[cell.index] ?? structure.area,
+    sequence: order.indexOf(cell.index) + 1,
+    picked: structure.verticalPickedIndices.includes(cell.index),
+    unitNumber: unitNumber(
+      structure.blockIndexOffset || 0,
+      0,
+      floorSampleNumber.value,
+      order.indexOf(cell.index) + 1,
+    ),
+  }))
+})
+
+const floorFrontCells = computed(() => floorCells.value.filter((c) => c.side === 'front'))
+const floorBackCells = computed(() => floorCells.value.filter((c) => c.side === 'back'))
+const orderedFloorCells = computed(() =>
+  [...floorCells.value].sort((a, b) => a.sequence - b.sequence),
 )
 
-function slotCount(ui: UnitUi) {
-  return structure.countByUi[ui] || 0
-}
-
-function isSlotEnabled(ui: UnitUi) {
-  return slotCount(ui) > 0
-}
-
-function slotSequenceNumbers(ui: UnitUi) {
-  if (isManualSequence.value) {
-    return pickedOrder.value.reduce<number[]>((acc, item, index) => {
-      if (item === ui) acc.push(index + 1)
-      return acc
-    }, [])
-  }
-  return sequenceNumbersForUi(
-    ui,
-    structure.countByUi,
-    structure.sequenceStartUi,
-    structure.sequenceDirection,
-    structure.sequenceOrder,
+function syncVerticalFloor() {
+  const n = Math.max(1, Math.min(MAX_UNITS_PER_FLOOR, structure.unitsPerFloor || 1))
+  structure.unitsPerFloor = n
+  structure.countByUi = countsFromSlots(floorUnitSlots(n))
+  structure.rowAreas = Array.from(
+    { length: n },
+    (_, i) => structure.rowAreas[i] ?? structure.area,
   )
-}
-
-function remainingPicksFor(ui: UnitUi) {
-  return slotCount(ui) - pickedOrder.value.filter((item) => item === ui).length
-}
-
-function trimPickedOrder() {
-  const remaining = { ...structure.countByUi }
-  const next: UnitUi[] = []
-  for (const ui of pickedOrder.value) {
-    if ((remaining[ui] || 0) > 0) {
-      next.push(ui)
-      remaining[ui] -= 1
-    }
-  }
-  pickedOrder.value = next
-  commitSequenceOrder(next)
-}
-
-function slotSequenceLabel(ui: UnitUi) {
-  const nums = slotSequenceNumbers(ui)
-  if (!nums.length) return '—'
-  return nums.join('، ')
-}
-
-function sampleUnitNumber(ui: UnitUi) {
-  const nums = slotSequenceNumbers(ui)
-  if (!nums.length) return '—'
-  const first = unitNumber(structure.blockIndexOffset || 0, 0, floorSampleNumber.value, nums[0]!)
-  if (nums.length === 1) return first
-  const last = unitNumber(
-    structure.blockIndexOffset || 0,
-    0,
-    floorSampleNumber.value,
-    nums[nums.length - 1]!,
-  )
-  return `${first} … ${last}`
-}
-
-function commitSequenceOrder(order: UnitUi[]) {
-  structure.sequenceOrder = syncedManualOrder(order, structure.countByUi)
-  if (isManualSequence.value && structure.sequenceOrder[0]) {
-    structure.sequenceStartUi = structure.sequenceOrder[0]
-  }
-}
-
-function ensureSequenceStart() {
-  if (isManualSequence.value) {
-    trimPickedOrder()
-    return
-  }
-  commitSequenceOrder(
-    orderedFloorSlots(structure.countByUi, structure.sequenceStartUi, structure.sequenceDirection),
-  )
-  if (slotCount(structure.sequenceStartUi) > 0) return
-  structure.sequenceStartUi = floorSequence.value[0] ?? UnitUi.MiddleFront
-}
-
-function syncUnitsPerFloor() {
-  structure.unitsPerFloor = Math.max(1, totalUnitsFromCounts(structure.countByUi))
-  ensureSequenceStart()
 }
 
 function resetManualSequence() {
-  pickedOrder.value = []
   structure.horizontalPickedIndices = []
-  commitSequenceOrder([])
+  structure.verticalPickedIndices = []
+  structure.sequenceOrder = []
 }
 
 function onSequenceDirectionChange(value: StructureConfig['sequenceDirection']) {
-  const previous = [...floorSequence.value]
   structure.sequenceDirection = value
   if (value === 'manual') {
     resetManualSequence()
   } else {
-    pickedOrder.value = []
     structure.horizontalPickedIndices = []
-    structure.sequenceStartUi = previous[0] ?? structure.sequenceStartUi
+    structure.verticalPickedIndices = []
   }
-}
-
-function slotActionLabel(ui: UnitUi) {
-  if (!isManualSequence.value) return 'اضغط لبدء تسلسل يدوي'
-  if (isPickComplete.value) {
-    const nums = slotSequenceNumbers(ui)
-    return nums.length ? `الترتيب: ${nums.join('، ')}` : 'اكتمل التسلسل'
-  }
-  if (remainingPicksFor(ui) <= 0 && slotCount(ui) > 0) return 'اكتمل هذا الموضع'
-  return `حدد ${pickStepTitle(nextPickNumber.value)}`
-}
-
-function pickNextSlot(ui: UnitUi) {
-  structure.sequenceDirection = 'manual'
-  if (slotCount(ui) < 1) {
-    structure.countByUi[ui] = 1
-    syncUnitsPerFloor()
-  }
-  if (isPickComplete.value) {
-    notify.info('اكتمل التسلسل. أعد التحديد من البداية إن أردت تغييره.')
-    return
-  }
-  if (remainingPicksFor(ui) <= 0) {
-    notify.warning('هذا الموضع اكتمل تحديده، اختر موضعاً آخر')
-    return
-  }
-  pickedOrder.value = [...pickedOrder.value, ui]
-  commitSequenceOrder(pickedOrder.value)
-}
-
-function onSlotCountChange(ui: UnitUi, value: number | null) {
-  const next = Math.max(0, Math.min(MAX_UNITS_PER_SLOT, value ?? 0))
-  const totalWithout = totalUnitsFromCounts(structure.countByUi) - slotCount(ui)
-  if (totalWithout + next < 1) {
-    notify.warning('يجب الإبقاء على وحدة واحدة على الأقل في الطابق')
-    structure.countByUi[ui] = 1
-    syncUnitsPerFloor()
-    return
-  }
-  if (totalWithout + next > MAX_UNITS_PER_FLOOR) {
-    notify.warning(`الحد الأقصى ${MAX_UNITS_PER_FLOOR} وحدات لكل طابق`)
-    return
-  }
-  structure.countByUi[ui] = next
-  syncUnitsPerFloor()
 }
 
 function syncHorizontalStreet() {
@@ -421,14 +316,8 @@ function onUnitsPerFloorChange(value: number | null) {
     syncHorizontalStreet()
     return
   }
-  structure.countByUi = countsFromSlots(floorUnitSlots(count))
-  commitSequenceOrder(
-    isManualSequence.value
-      ? pickedOrder.value
-      : orderedFloorSlots(structure.countByUi, structure.sequenceStartUi, structure.sequenceDirection),
-  )
-  ensureSequenceStart()
-  if (isManualSequence.value) resetManualSequence()
+  structure.verticalPickedIndices = []
+  syncVerticalFloor()
 }
 
 function applyAreaToAll() {
@@ -436,6 +325,8 @@ function applyAreaToAll() {
   structure.areaByUi = defaultAreaByUi(area)
   if (isHorizontal.value) {
     structure.rowAreas = Array.from({ length: structure.buildingsPerBlock }, () => area)
+  } else {
+    structure.rowAreas = Array.from({ length: structure.unitsPerFloor }, () => area)
   }
 }
 
@@ -453,16 +344,34 @@ function pickHorizontalHouse(index: number) {
   structure.horizontalPickedIndices = [...structure.horizontalPickedIndices, index]
 }
 
-function sortFloorUnits(units: PreviewUnit[], row: UnitUi[]) {
-  return row.flatMap((ui) => units.filter((unit) => unit.unitUi === ui))
+function pickVerticalUnit(index: number) {
+  structure.sequenceDirection = 'manual'
+  structure.layoutMode = 'vertical'
+  if (isPickComplete.value && structure.verticalPickedIndices.length >= structure.unitsPerFloor) {
+    notify.info('اكتمل التسلسل. أعد التحديد من البداية إن أردت تغييره.')
+    return
+  }
+  if (structure.verticalPickedIndices.includes(index)) {
+    notify.warning('هذه الوحدة حُددت مسبقاً')
+    return
+  }
+  structure.verticalPickedIndices = [...structure.verticalPickedIndices, index]
 }
 
-function floorFrontUnits(units: PreviewUnit[]) {
-  return sortFloorUnits(units, FLOOR_FRONT_ROW)
+function floorFrontUnits(units: { unitUi: number; unitNumber: string; sequenceNumber: number; area: number }[]) {
+  return units.filter((unit) =>
+    unit.unitUi === UnitUi.CornerFrontRight ||
+    unit.unitUi === UnitUi.MiddleFront ||
+    unit.unitUi === UnitUi.CornerFrontLeft,
+  )
 }
 
-function floorBackUnits(units: PreviewUnit[]) {
-  return sortFloorUnits(units, FLOOR_BACK_ROW)
+function floorBackUnits(units: { unitUi: number; unitNumber: string; sequenceNumber: number; area: number }[]) {
+  return units.filter((unit) =>
+    unit.unitUi === UnitUi.CornerBackRight ||
+    unit.unitUi === UnitUi.MiddleBack ||
+    unit.unitUi === UnitUi.CornerBackLeft,
+  )
 }
 
 const progressPercent = computed(() => {
@@ -556,20 +465,20 @@ function validateStep3() {
     }
     return true
   }
-  const total = totalUnitsFromCounts(structure.countByUi)
-  if (total < 1) {
+  syncVerticalFloor()
+  if (structure.unitsPerFloor < 1) {
     notify.warning('حدد وحدة واحدة على الأقل في الطابق')
     return false
   }
-  const missing = (Object.values(UnitUi) as UnitUi[]).some(
-    (ui) => slotCount(ui) > 0 && (!structure.areaByUi[ui] || structure.areaByUi[ui] <= 0),
+  const missing = verticalFloorCells(structure.unitsPerFloor).some(
+    (_, index) => !structure.rowAreas[index] || structure.rowAreas[index]! <= 0,
   )
   if (missing) {
-    notify.warning('حدد مساحة أكبر من صفر لكل موضع فيه وحدات')
+    notify.warning('حدد مساحة أكبر من صفر لكل وحدة في الطابق')
     return false
   }
-  if (isManualSequence.value && pickedOrder.value.length < total) {
-    notify.warning(`حدد ${pickStepTitle(pickedOrder.value.length + 1)} ثم أكمل بقية النقاط`)
+  if (isManualSequence.value && structure.unitsPerFloor > 1 && structure.verticalPickedIndices.length < structure.unitsPerFloor) {
+    notify.warning(`حدد ${pickStepTitle(structure.verticalPickedIndices.length + 1)} ثم أكمل بقية النقاط`)
     return false
   }
   return true
@@ -711,7 +620,7 @@ function applyLayoutDefaults(horizontal: boolean) {
   structure.sequenceDirection = 'manual'
   structure.sequenceOrder = []
   structure.horizontalPickedIndices = []
-  pickedOrder.value = []
+  structure.verticalPickedIndices = []
   if (horizontal) {
     structure.buildingsPerBlock = 6
     structure.floorsPerBuilding = 1
@@ -734,9 +643,9 @@ function applyLayoutDefaults(horizontal: boolean) {
     structure.bedrooms = 3
     structure.bathrooms = 2
     structure.parkingCount = 1
-    structure.countByUi = countsFromSlots(floorUnitSlots(6))
     structure.areaByUi = defaultAreaByUi(120)
     structure.rowAreas = Array.from({ length: 6 }, () => 120)
+    syncVerticalFloor()
   }
 }
 
@@ -941,8 +850,8 @@ onMounted(() => {
           الفلل تُرتَّب في صف واحد من اليمين إلى اليسار بدون طوابق. اضغط الفيلا لتحديد البداية ثم النقطة الثانية ثم الثالثة.
         </template>
         <template v-else>
-          اضغط المواضع بالترتيب: حدد البداية أولاً، ثم النقطة الثانية، ثم الثالثة، وهكذا.
-          يمكنك أيضاً اختيار الترقيم التلقائي مع عقارب الساعة أو عكسها.
+          كل وحدة تظهر كخانة مستقلة: نصفها تقريباً في الواجهة الأمامية ونصفها في الخلفية.
+          اضغط الوحدات لتحديد البداية ثم النقطة الثانية ثم الثالثة، أو اختر الترقيم التلقائي.
         </template>
       </p>
 
@@ -960,7 +869,7 @@ onMounted(() => {
           />
         </div>
         <Button
-          v-if="isManualSequence && (isHorizontal ? structure.horizontalPickedIndices.length : pickedOrder.length)"
+          v-if="isManualSequence && (isHorizontal ? structure.horizontalPickedIndices.length : structure.verticalPickedIndices.length)"
           label="إعادة التحديد من البداية"
           icon="pi pi-refresh"
           severity="secondary"
@@ -987,7 +896,7 @@ onMounted(() => {
       <div v-if="isManualSequence" class="pick-banner" :class="{ done: isPickComplete }">
         <strong>{{ nextPickPrompt }}</strong>
         <span v-if="!isPickComplete">
-          {{ isHorizontal ? structure.horizontalPickedIndices.length : pickedOrder.length }}
+          {{ isHorizontal ? structure.horizontalPickedIndices.length : structure.verticalPickedIndices.length }}
           /
           {{ floorUnitTotal }}
         </span>
@@ -1010,13 +919,13 @@ onMounted(() => {
 
       <div v-else-if="!isHorizontal" class="sequence-path">
         <span
-          v-for="(ui, index) in floorSequence"
-          :key="`seq-${index}-${ui}`"
+          v-for="cell in orderedFloorCells"
+          :key="`seq-${cell.index}`"
           class="sequence-path__item"
         >
-          <strong>{{ index + 1 }}</strong>
-          {{ labelOf(unitUiOptions, ui) }}
-          <i v-if="index < floorSequence.length - 1" class="pi pi-arrow-left" />
+          <strong>{{ cell.sequence }}</strong>
+          وحدة {{ cell.index + 1 }}
+          <i v-if="cell.sequence < orderedFloorCells.length" class="pi pi-arrow-left" />
         </span>
       </div>
 
@@ -1053,92 +962,62 @@ onMounted(() => {
 
       <div v-else class="floor-sheet">
         <div class="floor-sheet__label">واجهة أمامية</div>
-        <div class="floor-sheet__row">
-          <div
-            v-for="ui in FLOOR_FRONT_ROW"
-            :key="`front-${ui}`"
-            class="floor-slot"
+        <div class="floor-sheet__row floor-sheet__row--units">
+          <button
+            v-for="cell in floorFrontCells"
+            :key="`front-${cell.index}`"
+            type="button"
+            class="floor-unit"
             :class="{
-              on: isSlotEnabled(ui),
-              off: !isSlotEnabled(ui),
-              start: slotSequenceNumbers(ui).includes(1),
-              pickable: isManualSequence && remainingPicksFor(ui) > 0 && !isPickComplete,
-              current: isManualSequence && remainingPicksFor(ui) > 0 && !isPickComplete,
+              picked: cell.picked,
+              current: isManualSequence && !isPickComplete && !cell.picked,
+              start: cell.sequence === 1,
             }"
-            @click="pickNextSlot(ui)"
+            @click="pickVerticalUnit(cell.index)"
           >
-            <div class="floor-slot__head">
-              <span class="floor-slot__seq">{{ slotSequenceLabel(ui) }}</span>
-              <span class="floor-slot__start" :class="{ active: slotSequenceNumbers(ui).includes(1) }">
-                {{ slotActionLabel(ui) }}
-              </span>
-            </div>
-            <span class="floor-slot__title">{{ labelOf(unitUiOptions, ui) }}</span>
-            <span class="floor-slot__num">{{ sampleUnitNumber(ui) }}</span>
-            <div class="floor-slot__count" @click.stop>
-              <label>عدد الوحدات</label>
+            <span class="floor-unit__seq">{{ cell.sequence }}</span>
+            <span class="floor-unit__title">وحدة {{ cell.index + 1 }}</span>
+            <span class="floor-unit__side">{{ cell.label }}</span>
+            <span class="floor-unit__num">{{ cell.unitNumber }}</span>
+            <span class="floor-unit__area" @click.stop>
               <InputNumber
-                :model-value="structure.countByUi[ui]"
-                :min="0"
-                :max="MAX_UNITS_PER_SLOT"
-                show-buttons
-                @update:model-value="(value) => onSlotCountChange(ui, value)"
-              />
-            </div>
-            <span class="floor-slot__area" @click.stop>
-              <InputNumber
-                v-model="structure.areaByUi[ui]"
+                :model-value="structure.rowAreas[cell.index]"
                 :min="1"
                 suffix=" م²"
-                :disabled="!isSlotEnabled(ui)"
+                @update:model-value="(value) => (structure.rowAreas[cell.index] = value || 1)"
               />
             </span>
-          </div>
+          </button>
         </div>
 
         <div class="floor-sheet__corridor">الممر / قلب المبنى</div>
 
-        <div class="floor-sheet__row">
-          <div
-            v-for="ui in FLOOR_BACK_ROW"
-            :key="`back-${ui}`"
-            class="floor-slot"
+        <div class="floor-sheet__row floor-sheet__row--units">
+          <button
+            v-for="cell in floorBackCells"
+            :key="`back-${cell.index}`"
+            type="button"
+            class="floor-unit"
             :class="{
-              on: isSlotEnabled(ui),
-              off: !isSlotEnabled(ui),
-              start: slotSequenceNumbers(ui).includes(1),
-              pickable: isManualSequence && remainingPicksFor(ui) > 0 && !isPickComplete,
-              current: isManualSequence && remainingPicksFor(ui) > 0 && !isPickComplete,
+              picked: cell.picked,
+              current: isManualSequence && !isPickComplete && !cell.picked,
+              start: cell.sequence === 1,
             }"
-            @click="pickNextSlot(ui)"
+            @click="pickVerticalUnit(cell.index)"
           >
-            <div class="floor-slot__head">
-              <span class="floor-slot__seq">{{ slotSequenceLabel(ui) }}</span>
-              <span class="floor-slot__start" :class="{ active: slotSequenceNumbers(ui).includes(1) }">
-                {{ slotActionLabel(ui) }}
-              </span>
-            </div>
-            <span class="floor-slot__title">{{ labelOf(unitUiOptions, ui) }}</span>
-            <span class="floor-slot__num">{{ sampleUnitNumber(ui) }}</span>
-            <div class="floor-slot__count" @click.stop>
-              <label>عدد الوحدات</label>
+            <span class="floor-unit__seq">{{ cell.sequence }}</span>
+            <span class="floor-unit__title">وحدة {{ cell.index + 1 }}</span>
+            <span class="floor-unit__side">{{ cell.label }}</span>
+            <span class="floor-unit__num">{{ cell.unitNumber }}</span>
+            <span class="floor-unit__area" @click.stop>
               <InputNumber
-                :model-value="structure.countByUi[ui]"
-                :min="0"
-                :max="MAX_UNITS_PER_SLOT"
-                show-buttons
-                @update:model-value="(value) => onSlotCountChange(ui, value)"
-              />
-            </div>
-            <span class="floor-slot__area" @click.stop>
-              <InputNumber
-                v-model="structure.areaByUi[ui]"
+                :model-value="structure.rowAreas[cell.index]"
                 :min="1"
                 suffix=" م²"
-                :disabled="!isSlotEnabled(ui)"
+                @update:model-value="(value) => (structure.rowAreas[cell.index] = value || 1)"
               />
             </span>
-          </div>
+          </button>
         </div>
         <div class="floor-sheet__label">واجهة خلفية</div>
       </div>
@@ -1755,6 +1634,86 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.floor-sheet__row--units {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.floor-sheet__row--units .floor-unit {
+  flex: 1 1 140px;
+  min-width: 130px;
+  max-width: 200px;
+}
+
+.floor-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  background: #fff;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.floor-unit:hover {
+  border-color: color-mix(in srgb, var(--brand-mid) 40%, var(--border));
+}
+
+.floor-unit.current {
+  border-color: var(--brand-mid);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-soft) 80%, transparent);
+}
+
+.floor-unit.picked {
+  background: color-mix(in srgb, var(--brand-soft) 55%, #fff);
+  border-color: var(--brand-mid);
+}
+
+.floor-unit.start {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.floor-unit__seq {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  background: var(--brand);
+  color: #fff;
+}
+
+.floor-unit__title {
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.floor-unit__side {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.floor-unit__num {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--brand-mid);
+}
+
+.floor-unit__area :deep(.p-inputnumber),
+.floor-unit__area :deep(.p-inputnumber-input) {
+  width: 100%;
 }
 
 .floor-sheet__corridor {

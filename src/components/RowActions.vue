@@ -1,12 +1,14 @@
 <script setup lang="ts">
 defineProps<{
   showDetails?: boolean
+  showPrint?: boolean
 }>()
 
 defineEmits<{
   edit: []
   remove: []
   details: []
+  print: []
 }>()
 </script>
 
@@ -21,6 +23,16 @@ defineEmits<{
       @click="$emit('details')"
     >
       <i class="pi pi-eye" />
+    </button>
+    <button
+      v-if="showPrint"
+      type="button"
+      class="action-btn is-print"
+      v-tooltip.top="'طباعة'"
+      aria-label="طباعة"
+      @click="$emit('print')"
+    >
+      <i class="pi pi-print" />
     </button>
     <button
       type="button"
@@ -76,6 +88,12 @@ defineEmits<{
   color: #2b6cb0;
   background: rgba(43, 108, 176, 0.1);
   box-shadow: inset 0 0 0 1px rgba(43, 108, 176, 0.14);
+}
+
+.action-btn.is-print:hover {
+  color: #1f7a5c;
+  background: rgba(31, 122, 92, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(31, 122, 92, 0.14);
 }
 
 .action-btn.is-edit:hover {

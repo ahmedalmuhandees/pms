@@ -30,7 +30,6 @@ import {
 } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import Complex3DViewer from '@/components/complex3d/Complex3DViewer.vue'
-import { FLOOR_BACK_ROW, FLOOR_FRONT_ROW } from '@/utils/complexBuilder'
 
 const notify = useNotify()
 const router = useRouter()
@@ -141,6 +140,34 @@ function unitsInSlot(units: Unit[], ui: UnitUi) {
   return units.filter((unit) => unit.unitUi === ui)
 }
 
+/** صف فردي: يمين ثم كل الوسطيات جنباً إلى جنب ثم يسار */
+function expandRowUnits(units: Unit[], side: 'front' | 'back') {
+  const rightUi = side === 'front' ? UnitUi.CornerFrontRight : UnitUi.CornerBackRight
+  const midUi = side === 'front' ? UnitUi.MiddleFront : UnitUi.MiddleBack
+  const leftUi = side === 'front' ? UnitUi.CornerFrontLeft : UnitUi.CornerBackLeft
+
+  const rights = unitsInSlot(units, rightUi)
+  const mids = unitsInSlot(units, midUi)
+  const lefts = unitsInSlot(units, leftUi)
+
+  return [
+    ...rights.map((unit) => ({ unit, label: 'يمين' as const })),
+    ...mids.map((unit, index) => ({
+      unit,
+      label: (mids.length > 1 ? `وسط ${index + 1}` : 'وسط') as string,
+    })),
+    ...lefts.map((unit) => ({ unit, label: 'يسار' as const })),
+  ]
+}
+
+function frontRowUnits(units: Unit[]) {
+  return expandRowUnits(units, 'front')
+}
+
+function backRowUnits(units: Unit[]) {
+  return expandRowUnits(units, 'back')
+}
+
 function otherUnits(units: Unit[]) {
   const known = new Set<number>([
     UnitUi.MiddleFront,
@@ -151,12 +178,6 @@ function otherUnits(units: Unit[]) {
     UnitUi.CornerBackLeft,
   ])
   return units.filter((unit) => unit.unitUi == null || !known.has(unit.unitUi))
-}
-
-function slotSideLabel(ui: UnitUi) {
-  if (ui === UnitUi.CornerFrontRight || ui === UnitUi.CornerBackRight) return 'يمين'
-  if (ui === UnitUi.CornerFrontLeft || ui === UnitUi.CornerBackLeft) return 'يسار'
-  return 'وسط'
 }
 
 function filteredFloors(building: MapBuilding) {
@@ -570,59 +591,53 @@ onMounted(async () => {
                     <div class="floor-plate__label">ط {{ floorMap.floor.floorNumber }}</div>
                     <div class="floor-plan">
                       <div class="floor-plan__edge">أمام</div>
-                      <div class="floor-plan__row">
+                      <div class="floor-plan__row floor-plan__row--units">
                         <div
-                          v-for="ui in FLOOR_FRONT_ROW"
-                          :key="`f-${floorMap.floor.id}-${ui}`"
+                          v-for="cell in frontRowUnits(floorMap.units)"
+                          :key="`f-${floorMap.floor.id}-${cell.unit.id}`"
                           class="plan-slot"
-                          :class="{ empty: !unitsInSlot(floorMap.units, ui).length }"
                         >
-                          <span class="plan-slot__pos">{{ slotSideLabel(ui) }}</span>
+                          <span class="plan-slot__pos">{{ cell.label }}</span>
                           <button
-                            v-for="unit in unitsInSlot(floorMap.units, ui)"
-                            :key="unit.id"
                             type="button"
                             class="unit-cell"
                             :class="[
-                              statusClass(unit.status),
-                              { active: selectedUnit?.id === unit.id },
+                              statusClass(cell.unit.status),
+                              { active: selectedUnit?.id === cell.unit.id },
                             ]"
-                            :title="`${unit.unitNumber} — ${labelOf(unitTypeOptions, unit.unitType)} — ${labelOf(unitUiOptions, unit.unitUi)} — ${labelOf(unitStatusOptions, unit.status)}`"
-                            @click="selectUnit(unit)"
-                            @dblclick="openUnit(unit)"
+                            :title="`${cell.unit.unitNumber} — ${labelOf(unitTypeOptions, cell.unit.unitType)} — ${labelOf(unitUiOptions, cell.unit.unitUi)} — ${labelOf(unitStatusOptions, cell.unit.status)}`"
+                            @click="selectUnit(cell.unit)"
+                            @dblclick="openUnit(cell.unit)"
                           >
-                            <span class="unit-cell__num">{{ unit.unitNumber }}</span>
+                            <span class="unit-cell__num">{{ cell.unit.unitNumber }}</span>
                             <span class="unit-cell__meta">
-                              {{ unit.bedrooms }}غ · {{ unit.area }}م²
+                              {{ cell.unit.bedrooms }}غ · {{ cell.unit.area }}م²
                             </span>
                           </button>
                         </div>
                       </div>
                       <div class="floor-plan__hall">الممر</div>
-                      <div class="floor-plan__row">
+                      <div class="floor-plan__row floor-plan__row--units">
                         <div
-                          v-for="ui in FLOOR_BACK_ROW"
-                          :key="`b-${floorMap.floor.id}-${ui}`"
+                          v-for="cell in backRowUnits(floorMap.units)"
+                          :key="`b-${floorMap.floor.id}-${cell.unit.id}`"
                           class="plan-slot"
-                          :class="{ empty: !unitsInSlot(floorMap.units, ui).length }"
                         >
-                          <span class="plan-slot__pos">{{ slotSideLabel(ui) }}</span>
+                          <span class="plan-slot__pos">{{ cell.label }}</span>
                           <button
-                            v-for="unit in unitsInSlot(floorMap.units, ui)"
-                            :key="unit.id"
                             type="button"
                             class="unit-cell"
                             :class="[
-                              statusClass(unit.status),
-                              { active: selectedUnit?.id === unit.id },
+                              statusClass(cell.unit.status),
+                              { active: selectedUnit?.id === cell.unit.id },
                             ]"
-                            :title="`${unit.unitNumber} — ${labelOf(unitTypeOptions, unit.unitType)} — ${labelOf(unitUiOptions, unit.unitUi)} — ${labelOf(unitStatusOptions, unit.status)}`"
-                            @click="selectUnit(unit)"
-                            @dblclick="openUnit(unit)"
+                            :title="`${cell.unit.unitNumber} — ${labelOf(unitTypeOptions, cell.unit.unitType)} — ${labelOf(unitUiOptions, cell.unit.unitUi)} — ${labelOf(unitStatusOptions, cell.unit.status)}`"
+                            @click="selectUnit(cell.unit)"
+                            @dblclick="openUnit(cell.unit)"
                           >
-                            <span class="unit-cell__num">{{ unit.unitNumber }}</span>
+                            <span class="unit-cell__num">{{ cell.unit.unitNumber }}</span>
                             <span class="unit-cell__meta">
-                              {{ unit.bedrooms }}غ · {{ unit.area }}م²
+                              {{ cell.unit.bedrooms }}غ · {{ cell.unit.area }}م²
                             </span>
                           </button>
                         </div>
@@ -1012,8 +1027,8 @@ onMounted(async () => {
 
 .tower {
   min-width: 360px;
-  max-width: 460px;
-  flex: 1 1 360px;
+  max-width: none;
+  flex: 1 1 420px;
   display: flex;
   flex-direction: column;
 }
@@ -1156,6 +1171,20 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
+}
+
+.floor-plan__row--units {
+  display: flex;
+  width: 100%;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.floor-plan__row--units .plan-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  width: 100%;
 }
 
 .plan-slot {

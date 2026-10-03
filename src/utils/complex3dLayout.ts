@@ -1,6 +1,5 @@
 import { UnitStatus, UnitUi, type Unit } from '@/types'
 import type { ComplexMapLayoutMode, MapBlock, MapBuilding } from '@/types/complexMap'
-import { isFrontUnitUi } from '@/utils/complexBuilder'
 
 export type Vec3 = [number, number, number]
 
@@ -97,17 +96,6 @@ function hash01(n: number) {
   return x - Math.floor(x)
 }
 
-function colOf(ui: UnitUi | null | undefined) {
-  if (ui === UnitUi.CornerFrontRight || ui === UnitUi.CornerBackRight) return 1
-  if (ui === UnitUi.CornerFrontLeft || ui === UnitUi.CornerBackLeft) return -1
-  return 0
-}
-
-function isFront(ui: UnitUi | null | undefined) {
-  if (ui == null) return true
-  return isFrontUnitUi(ui)
-}
-
 function statusColor(status: number) {
   return UNIT_STATUS_3D_COLORS[status] ?? '#8a9aa0'
 }
@@ -120,47 +108,62 @@ function floorNumbers(building: MapBuilding) {
   return { min, max, count: Math.max(1, max - min + 1) }
 }
 
+/** صف واجهة: يمين ثم الوسطيات جنباً إلى جنب ثم يسار */
+function expandFacadeRow(units: Unit[], side: 'front' | 'back'): Unit[] {
+  const rightUi = side === 'front' ? UnitUi.CornerFrontRight : UnitUi.CornerBackRight
+  const midUi = side === 'front' ? UnitUi.MiddleFront : UnitUi.MiddleBack
+  const leftUi = side === 'front' ? UnitUi.CornerFrontLeft : UnitUi.CornerBackLeft
+  const rights = units.filter((u) => (u.unitUi ?? UnitUi.MiddleFront) === rightUi)
+  const mids = units.filter((u) => (u.unitUi ?? UnitUi.MiddleFront) === midUi)
+  const lefts = units.filter((u) => (u.unitUi ?? UnitUi.MiddleFront) === leftUi)
+  return [...rights, ...mids, ...lefts]
+}
+
 function buildTowerSpec(building: MapBuilding, index: number): Omit<SceneBuildingMesh, 'position'> {
   const { min, count } = floorNumbers(building)
-  const width = 3 * UNIT_W + 2 * SLOT_GAP + 1.8
-  const depth = 2 * UNIT_D + CORRIDOR
-  const height = count * FLOOR_H + 0.35
   const facadeColor = FACADES[index % FACADES.length]!
   const units: SceneUnitMesh[] = []
 
+  let maxRowCount = 3
   for (const floorMap of building.floors) {
-    const bySlot = new Map<UnitUi, Unit[]>()
-    for (const unit of floorMap.units) {
-      const ui = unit.unitUi ?? UnitUi.MiddleFront
-      const list = bySlot.get(ui) ?? []
-      list.push(unit)
-      bySlot.set(ui, list)
-    }
+    const front = expandFacadeRow(floorMap.units, 'front')
+    const back = expandFacadeRow(floorMap.units, 'back')
+    maxRowCount = Math.max(maxRowCount, front.length, back.length, 1)
+  }
 
+  const cellW = UNIT_W + SLOT_GAP
+  const width = maxRowCount * cellW + 1.8
+  const depth = 2 * UNIT_D + CORRIDOR
+  const height = count * FLOOR_H + 0.35
+  const unitBoxW = Math.max(2.4, UNIT_W * 0.82)
+
+  for (const floorMap of building.floors) {
     const y = (floorMap.floor.floorNumber - min) * FLOOR_H + FLOOR_H * 0.55
-    for (const [ui, slotUnits] of bySlot) {
-      const n = slotUnits.length
-      const col = colOf(ui)
-      const front = isFront(ui)
+    const rows: { side: 'front' | 'back'; row: Unit[] }[] = [
+      { side: 'front', row: expandFacadeRow(floorMap.units, 'front') },
+      { side: 'back', row: expandFacadeRow(floorMap.units, 'back') },
+    ]
+
+    for (const { side, row } of rows) {
+      const n = row.length
+      if (!n) continue
+      const front = side === 'front'
       const z = front ? depth / 2 + 0.14 : -(depth / 2 + 0.14)
-      for (let i = 0; i < n; i++) {
-        const unit = slotUnits[i]!
-        const spread = (n - 1) * 2.15
-        const ox = n > 1 ? -spread / 2 + i * 2.15 : 0
-        const w = Math.max(2.2, (UNIT_W * 0.78) / Math.min(n, 3))
-        const x = col * (UNIT_W + SLOT_GAP) + ox
-        const facing = front ? 1 : -1
+      const facing = front ? 1 : -1
+      const startX = -((n - 1) * cellW) / 2
+      row.forEach((unit, i) => {
+        const x = startX + i * cellW
         units.push({
           id: unit.id,
           unit,
           number: unit.unitNumber || '',
           position: [x, y, z],
-          size: [w, FLOOR_H * 0.58, 0.32],
+          size: [unitBoxW, FLOOR_H * 0.58, 0.32],
           labelPosition: [x, y, z + facing * 0.48],
           color: statusColor(unit.status),
           balcony: front && floorMap.floor.floorNumber > min,
         })
-      }
+      })
     }
   }
 

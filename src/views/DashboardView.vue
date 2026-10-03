@@ -1,28 +1,72 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import type { Statistics } from '@/types'
+import type { ChartData } from 'chart.js'
+import type { Installment, Reservation, SalesContract, Statistics, Unit } from '@/types'
+import {
+  ContractStatus,
+  InstallmentStatus,
+  ReservationStatus,
+  UnitStatus,
+} from '@/types'
 import { getStatistics } from '@/api/statistics'
+import { getUnits } from '@/api/units'
+import { getSalesContracts } from '@/api/salesContracts'
+import { getInstallments } from '@/api/installments'
+import { getReservations } from '@/api/reservations'
 import { getErrorMessage } from '@/api/client'
 import { useNotify } from '@/composables/useNotify'
+import {
+  contractStatusOptions,
+  formatMoney,
+  installmentStatusOptions,
+  labelOf,
+  unitStatusOptions,
+} from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import DashboardSkeleton from '@/components/skeletons/DashboardSkeleton.vue'
+import DashboardChart from '@/components/DashboardChart.vue'
 
-type Tone = 'teal' | 'copper' | 'slate' | 'ocean' | 'forest' | 'rose'
-type StatKey = keyof Statistics
+const COLORS = {
+  teal: '#156574',
+  tealSoft: '#1f8494',
+  copper: '#c46b2b',
+  ocean: '#2b6cb0',
+  forest: '#1f7a5c',
+  rose: '#b04a4a',
+  slate: '#3d5560',
+  amber: '#b7791f',
+  mist: '#8aa0a8',
+}
 
-interface StatCard {
-  key: StatKey
-  label: string
-  hint: string
-  icon: string
-  tone: Tone
-  to: string
+const UNIT_STATUS_COLORS: Record<number, string> = {
+  [UnitStatus.Available]: COLORS.forest,
+  [UnitStatus.Reserved]: COLORS.amber,
+  [UnitStatus.Sold]: COLORS.teal,
+  [UnitStatus.Rented]: COLORS.ocean,
+  [UnitStatus.Maintenance]: COLORS.rose,
+}
+
+const INSTALLMENT_STATUS_COLORS: Record<number, string> = {
+  [InstallmentStatus.Pending]: COLORS.amber,
+  [InstallmentStatus.Paid]: COLORS.forest,
+  [InstallmentStatus.Partial]: COLORS.ocean,
+  [InstallmentStatus.Overdue]: COLORS.rose,
+  [InstallmentStatus.Cancelled]: COLORS.mist,
+}
+
+const CONTRACT_STATUS_COLORS: Record<number, string> = {
+  [ContractStatus.Draft]: COLORS.mist,
+  [ContractStatus.Active]: COLORS.teal,
+  [ContractStatus.Completed]: COLORS.forest,
+  [ContractStatus.Cancelled]: COLORS.rose,
+  [ContractStatus.Suspended]: COLORS.amber,
 }
 
 const notify = useNotify()
 const router = useRouter()
 const loading = ref(true)
+
 const stats = ref<Statistics>({
   complexesCount: 0,
   blocksCount: 0,
@@ -37,47 +81,315 @@ const stats = ref<Statistics>({
   visitorsCount: 0,
 })
 
-const featured: StatCard[] = [
-  { key: 'complexesCount', label: 'المجمعات', hint: 'المجمعات السكنية النشطة', icon: 'pi pi-building', tone: 'teal', to: '/complexes' },
-  { key: 'unitsCount', label: 'الوحدات', hint: 'إجمالي الوحدات المسجّلة', icon: 'pi pi-key', tone: 'copper', to: '/units' },
-  { key: 'customersCount', label: 'العملاء', hint: 'قاعدة بيانات العملاء', icon: 'pi pi-users', tone: 'ocean', to: '/customers' },
-  { key: 'usersCount', label: 'المستخدمون', hint: 'حسابات الدخول للنظام', icon: 'pi pi-user', tone: 'slate', to: '/users' },
-]
-
-const structureCards: StatCard[] = [
-  { key: 'blocksCount', label: 'البلوكات', hint: 'داخل المجمعات', icon: 'pi pi-th-large', tone: 'teal', to: '/blocks' },
-  { key: 'buildingsCount', label: 'المباني', hint: 'المباني المسجّلة', icon: 'pi pi-home', tone: 'ocean', to: '/buildings' },
-  { key: 'floorsCount', label: 'الطوابق', hint: 'طوابق المباني', icon: 'pi pi-bars', tone: 'slate', to: '/floors' },
-]
-
-const peopleCards: StatCard[] = [
-  { key: 'employeesCount', label: 'الموظفون', hint: 'الإدارة والتشغيل', icon: 'pi pi-id-card', tone: 'forest', to: '/employees' },
-  { key: 'residentsCount', label: 'السكان', hint: 'المقيمون', icon: 'pi pi-home', tone: 'teal', to: '/residents' },
-  { key: 'vehiclesCount', label: 'المركبات', hint: 'المسجّلة في النظام', icon: 'pi pi-car', tone: 'copper', to: '/vehicles' },
-  { key: 'visitorsCount', label: 'الزوار', hint: 'سجل الزيارات', icon: 'pi pi-envelope', tone: 'rose', to: '/visitors' },
-]
-
-const totalAssets = computed(
-  () =>
-    stats.value.complexesCount +
-    stats.value.blocksCount +
-    stats.value.buildingsCount +
-    stats.value.floorsCount +
-    stats.value.unitsCount,
-)
+const units = ref<Unit[]>([])
+const contracts = ref<SalesContract[]>([])
+const installments = ref<Installment[]>([])
+const reservations = ref<Reservation[]>([])
+const contractsTotal = ref(0)
+const installmentsTotal = ref(0)
+const reservationsTotal = ref(0)
 
 function formatCount(value: number) {
   return new Intl.NumberFormat('en-US').format(value)
+}
+
+function formatPct(value: number) {
+  return `${value.toFixed(0)}%`
+}
+
+function countBy<T>(items: T[], getKey: (item: T) => number | null | undefined) {
+  const map = new Map<number, number>()
+  for (const item of items) {
+    const key = getKey(item)
+    if (key == null) continue
+    map.set(key, (map.get(key) || 0) + 1)
+  }
+  return map
 }
 
 function go(path: string) {
   void router.push(path)
 }
 
+const unitStatusCounts = computed(() => countBy(units.value, (u) => u.status))
+
+const unitsAvailable = computed(() => unitStatusCounts.value.get(UnitStatus.Available) || 0)
+const unitsSold = computed(() => unitStatusCounts.value.get(UnitStatus.Sold) || 0)
+const unitsReserved = computed(() => unitStatusCounts.value.get(UnitStatus.Reserved) || 0)
+
+const soldRate = computed(() => {
+  const total = stats.value.unitsCount || units.value.length
+  if (!total) return 0
+  return (unitsSold.value / total) * 100
+})
+
+const occupancyRate = computed(() => {
+  const total = stats.value.unitsCount || units.value.length
+  if (!total) return 0
+  const taken =
+    unitsSold.value +
+    unitsReserved.value +
+    (unitStatusCounts.value.get(UnitStatus.Rented) || 0)
+  return (taken / total) * 100
+})
+
+const activeContracts = computed(
+  () => contracts.value.filter((c) => c.contractStatus === ContractStatus.Active).length,
+)
+
+const overdueInstallments = computed(
+  () => installments.value.filter((i) => i.status === InstallmentStatus.Overdue).length,
+)
+
+const pendingInstallments = computed(
+  () => installments.value.filter((i) => i.status === InstallmentStatus.Pending).length,
+)
+
+const activeReservations = computed(
+  () =>
+    reservations.value.filter(
+      (r) =>
+        r.status === ReservationStatus.Pending || r.status === ReservationStatus.Confirmed,
+    ).length,
+)
+
+const kpiCards = computed(() => [
+  {
+    key: 'units',
+    label: 'إجمالي الوحدات',
+    value: formatCount(stats.value.unitsCount),
+    hint: `${formatCount(unitsAvailable.value)} متاح · ${formatCount(unitsSold.value)} مباع`,
+    icon: 'pi pi-key',
+    tone: 'teal',
+    to: '/units',
+  },
+  {
+    key: 'sold',
+    label: 'نسبة البيع',
+    value: formatPct(soldRate.value),
+    hint: `${formatCount(unitsSold.value)} وحدة مباعة`,
+    icon: 'pi pi-chart-line',
+    tone: 'copper',
+    to: '/units',
+  },
+  {
+    key: 'contracts',
+    label: 'عقود سارية',
+    value: formatCount(activeContracts.value),
+    hint: `${formatCount(contractsTotal.value)} عقد إجمالي`,
+    icon: 'pi pi-file',
+    tone: 'ocean',
+    to: '/sales-contracts',
+  },
+  {
+    key: 'overdue',
+    label: 'أقساط متأخرة',
+    value: formatCount(overdueInstallments.value),
+    hint: `${formatCount(pendingInstallments.value)} غير مدفوع`,
+    icon: 'pi pi-exclamation-triangle',
+    tone: 'rose',
+    to: '/installments',
+  },
+  {
+    key: 'customers',
+    label: 'العملاء',
+    value: formatCount(stats.value.customersCount),
+    hint: `${formatCount(stats.value.residentsCount)} مقيم`,
+    icon: 'pi pi-users',
+    tone: 'forest',
+    to: '/customers',
+  },
+  {
+    key: 'reservations',
+    label: 'حجوزات نشطة',
+    value: formatCount(activeReservations.value),
+    hint: `${formatCount(reservationsTotal.value)} حجز إجمالي`,
+    icon: 'pi pi-bookmark',
+    tone: 'amber',
+    to: '/reservations',
+  },
+])
+
+const unitStatusChart = computed<ChartData>(() => {
+  const labels: string[] = []
+  const values: number[] = []
+  const colors: string[] = []
+  for (const opt of unitStatusOptions) {
+    const count = unitStatusCounts.value.get(opt.value) || 0
+    if (!count) continue
+    labels.push(opt.label)
+    values.push(count)
+    colors.push(UNIT_STATUS_COLORS[opt.value] || COLORS.mist)
+  }
+  if (!values.length) {
+    return {
+      labels: ['لا بيانات'],
+      datasets: [{ data: [1], backgroundColor: ['#d3e0e5'], borderWidth: 0 }],
+    }
+  }
+  return {
+    labels,
+    datasets: [
+      {
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0,
+        hoverOffset: 6,
+      },
+    ],
+  }
+})
+
+const structureChart = computed<ChartData>(() => ({
+  labels: ['مجمعات', 'بلوكات', 'مباني', 'طوابق', 'وحدات'],
+  datasets: [
+    {
+      label: 'العدد',
+      data: [
+        stats.value.complexesCount,
+        stats.value.blocksCount,
+        stats.value.buildingsCount,
+        stats.value.floorsCount,
+        stats.value.unitsCount,
+      ],
+      backgroundColor: [
+        COLORS.teal,
+        COLORS.tealSoft,
+        COLORS.ocean,
+        COLORS.slate,
+        COLORS.copper,
+      ],
+      borderRadius: 8,
+      borderSkipped: false,
+      maxBarThickness: 42,
+    },
+  ],
+}))
+
+const installmentChart = computed<ChartData>(() => {
+  const counts = countBy(installments.value, (i) => i.status)
+  const labels: string[] = []
+  const values: number[] = []
+  const colors: string[] = []
+  for (const opt of installmentStatusOptions) {
+    const count = counts.get(opt.value) || 0
+    if (!count) continue
+    labels.push(opt.label)
+    values.push(count)
+    colors.push(INSTALLMENT_STATUS_COLORS[opt.value] || COLORS.mist)
+  }
+  if (!values.length) {
+    return {
+      labels: ['لا بيانات'],
+      datasets: [{ data: [1], backgroundColor: ['#d3e0e5'], borderWidth: 0 }],
+    }
+  }
+  return {
+    labels,
+    datasets: [
+      {
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0,
+        hoverOffset: 6,
+      },
+    ],
+  }
+})
+
+const contractStatusChart = computed<ChartData>(() => {
+  const counts = countBy(contracts.value, (c) => c.contractStatus)
+  return {
+    labels: contractStatusOptions.map((o) => o.label),
+    datasets: [
+      {
+        label: 'العقود',
+        data: contractStatusOptions.map((o) => counts.get(o.value) || 0),
+        backgroundColor: contractStatusOptions.map(
+          (o) => CONTRACT_STATUS_COLORS[o.value] || COLORS.mist,
+        ),
+        borderRadius: 8,
+        borderSkipped: false,
+        maxBarThickness: 36,
+      },
+    ],
+  }
+})
+
+const peopleChart = computed<ChartData>(() => ({
+  labels: ['عملاء', 'مقيمون', 'موظفون', 'مستخدمون', 'زوار', 'مركبات'],
+  datasets: [
+    {
+      label: 'العدد',
+      data: [
+        stats.value.customersCount,
+        stats.value.residentsCount,
+        stats.value.employeesCount,
+        stats.value.usersCount,
+        stats.value.visitorsCount,
+        stats.value.vehiclesCount,
+      ],
+      backgroundColor: [
+        COLORS.ocean,
+        COLORS.teal,
+        COLORS.forest,
+        COLORS.slate,
+        COLORS.rose,
+        COLORS.copper,
+      ],
+      borderRadius: 8,
+      borderSkipped: false,
+      maxBarThickness: 36,
+    },
+  ],
+}))
+
+const doughnutOptions = {
+  cutout: '68%',
+  plugins: {
+    legend: { position: 'bottom' as const },
+  },
+}
+
+const recentContracts = computed(() =>
+  [...contracts.value]
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .slice(0, 6),
+)
+
+const quickLinks = [
+  { label: 'عقد جديد', icon: 'pi pi-plus', to: '/sales-contracts', tone: 'teal' },
+  { label: 'الوحدات', icon: 'pi pi-key', to: '/units', tone: 'copper' },
+  { label: 'الأقساط', icon: 'pi pi-wallet', to: '/installments', tone: 'rose' },
+  { label: 'الحجوزات', icon: 'pi pi-bookmark', to: '/reservations', tone: 'amber' },
+  { label: 'العملاء', icon: 'pi pi-users', to: '/customers', tone: 'ocean' },
+  { label: 'خريطة المجمع', icon: 'pi pi-map', to: '/complex-map', tone: 'forest' },
+]
+
+function contractStatusLabel(status: number) {
+  return labelOf(contractStatusOptions, status)
+}
+
 onMounted(async () => {
   loading.value = true
   try {
-    stats.value = await getStatistics()
+    const [statistics, unitsPage, contractsPage, installmentsPage, reservationsPage] =
+      await Promise.all([
+        getStatistics(),
+        getUnits({ Page: 1, PageSize: 500 }),
+        getSalesContracts({ Page: 1, PageSize: 500 }),
+        getInstallments({ Page: 1, PageSize: 500 }),
+        getReservations({ Page: 1, PageSize: 300 }),
+      ])
+
+    stats.value = statistics
+    units.value = unitsPage.items || []
+    contracts.value = contractsPage.items || []
+    installments.value = installmentsPage.items || []
+    reservations.value = reservationsPage.items || []
+    contractsTotal.value = contractsPage.totalCount || contracts.value.length
+    installmentsTotal.value = installmentsPage.totalCount || installments.value.length
+    reservationsTotal.value = reservationsPage.totalCount || reservations.value.length
   } catch (error) {
     notify.error(getErrorMessage(error))
   } finally {
@@ -88,7 +400,7 @@ onMounted(async () => {
 
 <template>
   <div class="page dash">
-    <PageHeader title="لوحة التحكم" subtitle="نظرة شاملة على أصول المجمعات والحسابات">
+    <PageHeader title="لوحة التحكم" subtitle="متابعة المبيعات والوحدات والأقساط والحركة اليومية">
       <template #actions>
         <div class="live-pill">
           <span class="live-dot" />
@@ -100,119 +412,181 @@ onMounted(async () => {
     <DashboardSkeleton v-if="loading" />
 
     <template v-else>
-      <section class="overview">
-        <div class="overview__copy">
-          <p class="overview__eyebrow">ملخص النظام</p>
-          <h2 class="overview__title">الأصول العقارية والحسابات في مكان واحد</h2>
-          <p class="overview__text">
-            إجمالي عناصر الهيكل العقاري المسجّل حالياً
-            <strong>{{ formatCount(totalAssets) }}</strong>
+      <section class="hero">
+        <div class="hero__copy">
+          <p class="hero__eyebrow">ملخص تشغيلي</p>
+          <h2 class="hero__title">أداء المجمعات والمبيعات في نظرة واحدة</h2>
+          <p class="hero__text">
+            نسبة الإشغال
+            <strong>{{ formatPct(occupancyRate) }}</strong>
+            · العقود السارية
+            <strong>{{ formatCount(activeContracts) }}</strong>
+            · الأقساط المتأخرة
+            <strong>{{ formatCount(overdueInstallments) }}</strong>
           </p>
         </div>
-        <div class="overview__metrics">
-          <div class="mini-metric">
-            <span class="mini-metric__value">{{ formatCount(stats.complexesCount) }}</span>
-            <span class="mini-metric__label">مجمع</span>
+        <div class="hero__metrics">
+          <div class="hero-metric">
+            <span class="hero-metric__value">{{ formatCount(stats.complexesCount) }}</span>
+            <span class="hero-metric__label">مجمع</span>
           </div>
-          <div class="mini-metric">
-            <span class="mini-metric__value">{{ formatCount(stats.unitsCount) }}</span>
-            <span class="mini-metric__label">وحدة</span>
+          <div class="hero-metric">
+            <span class="hero-metric__value">{{ formatCount(stats.unitsCount) }}</span>
+            <span class="hero-metric__label">وحدة</span>
           </div>
-          <div class="mini-metric">
-            <span class="mini-metric__value">{{ formatCount(stats.customersCount) }}</span>
-            <span class="mini-metric__label">عميل</span>
+          <div class="hero-metric">
+            <span class="hero-metric__value">{{ formatCount(stats.customersCount) }}</span>
+            <span class="hero-metric__label">عميل</span>
+          </div>
+          <div class="hero-metric">
+            <span class="hero-metric__value">{{ formatCount(contractsTotal) }}</span>
+            <span class="hero-metric__label">عقد</span>
           </div>
         </div>
       </section>
 
-      <section class="section">
-        <div class="section__head">
-          <h3>المؤشرات الرئيسية</h3>
-          <p>الأرقام الأكثر أهمية للمتابعة اليومية</p>
-        </div>
-        <div class="featured-grid">
-          <button
-            v-for="(card, index) in featured"
-            :key="card.key"
-            type="button"
-            class="feature-card"
-            :class="`tone-${card.tone}`"
-            :style="{ animationDelay: `${index * 70}ms` }"
-            @click="go(card.to)"
-          >
-            <span class="feature-card__mesh" aria-hidden="true" />
-            <div class="feature-card__top">
-              <span class="feature-card__icon">
-                <i :class="card.icon" />
-              </span>
-              <span class="feature-card__go">
-                عرض
-                <i class="pi pi-arrow-left" />
-              </span>
+      <section class="kpi-grid">
+        <button
+          v-for="(card, index) in kpiCards"
+          :key="card.key"
+          type="button"
+          class="kpi-card"
+          :class="`tone-${card.tone}`"
+          :style="{ animationDelay: `${index * 50}ms` }"
+          @click="go(card.to)"
+        >
+          <span class="kpi-card__icon"><i :class="card.icon" /></span>
+          <div class="kpi-card__body">
+            <div class="kpi-card__label">{{ card.label }}</div>
+            <div class="kpi-card__value">{{ card.value }}</div>
+            <div class="kpi-card__hint">{{ card.hint }}</div>
+          </div>
+        </button>
+      </section>
+
+      <section class="charts-grid">
+        <article class="panel">
+          <header class="panel__head">
+            <div>
+              <h3>توزيع حالة الوحدات</h3>
+              <p>متاح · محجوز · مباع · مؤجر · صيانة</p>
             </div>
-            <div class="feature-card__value">{{ formatCount(stats[card.key]) }}</div>
-            <div class="feature-card__footer">
-              <div>
-                <div class="feature-card__label">{{ card.label }}</div>
-                <div class="feature-card__hint">{{ card.hint }}</div>
+            <button type="button" class="panel__link" @click="go('/units')">عرض الوحدات</button>
+          </header>
+          <DashboardChart type="doughnut" :data="unitStatusChart" :options="doughnutOptions" :height="280" />
+        </article>
+
+        <article class="panel">
+          <header class="panel__head">
+            <div>
+              <h3>الهيكل العقاري</h3>
+              <p>من المجمع حتى الوحدة</p>
+            </div>
+            <button type="button" class="panel__link" @click="go('/complexes')">المجمعات</button>
+          </header>
+          <DashboardChart type="bar" :data="structureChart" :height="280" />
+        </article>
+
+        <article class="panel">
+          <header class="panel__head">
+            <div>
+              <h3>حالة الأقساط</h3>
+              <p>مدفوع · متأخر · غير مدفوع</p>
+            </div>
+            <button type="button" class="panel__link" @click="go('/installments')">الأقساط</button>
+          </header>
+          <DashboardChart type="doughnut" :data="installmentChart" :options="doughnutOptions" :height="280" />
+        </article>
+
+        <article class="panel">
+          <header class="panel__head">
+            <div>
+              <h3>حالة عقود البيع</h3>
+              <p>مسودة · ساري · مكتمل · ملغى</p>
+            </div>
+            <button type="button" class="panel__link" @click="go('/sales-contracts')">العقود</button>
+          </header>
+          <DashboardChart type="bar" :data="contractStatusChart" :height="280" />
+        </article>
+      </section>
+
+      <section class="bottom-grid">
+        <article class="panel">
+          <header class="panel__head">
+            <div>
+              <h3>الأشخاص والحركة</h3>
+              <p>عملاء · مقيمون · موظفون · زوار</p>
+            </div>
+          </header>
+          <DashboardChart type="bar" :data="peopleChart" :height="260" />
+        </article>
+
+        <article class="panel">
+          <header class="panel__head">
+            <div>
+              <h3>أحدث العقود</h3>
+              <p>آخر العقود المسجّلة في النظام</p>
+            </div>
+            <button type="button" class="panel__link" @click="go('/sales-contracts')">الكل</button>
+          </header>
+
+          <div v-if="recentContracts.length" class="recent-list">
+            <button
+              v-for="row in recentContracts"
+              :key="row.id"
+              type="button"
+              class="recent-row"
+              @click="go('/sales-contracts')"
+            >
+              <div class="recent-row__main">
+                <strong>{{ row.contractNumber || '—' }}</strong>
+                <span>{{ formatMoney(row.sellingPrice) }}</span>
               </div>
-            </div>
-          </button>
-        </div>
-      </section>
+              <div class="recent-row__meta">
+                <span class="badge">{{ contractStatusLabel(row.contractStatus) }}</span>
+                <span class="muted">{{ row.contractDate?.slice(0, 10) || '—' }}</span>
+              </div>
+            </button>
+          </div>
+          <div v-else class="empty-hint">لا توجد عقود بعد</div>
+        </article>
 
-      <section class="section">
-        <div class="section__head">
-          <h3>الهيكل العقاري</h3>
-          <p>تفصيل البلوكات والمباني والطوابق</p>
-        </div>
-        <div class="metric-grid">
-          <button
-            v-for="(card, index) in structureCards"
-            :key="card.key"
-            type="button"
-            class="metric-card"
-            :class="`tone-${card.tone}`"
-            :style="{ animationDelay: `${index * 55}ms` }"
-            @click="go(card.to)"
-          >
-            <span class="metric-card__accent" aria-hidden="true" />
-            <span class="metric-card__icon"><i :class="card.icon" /></span>
-            <div class="metric-card__body">
-              <div class="metric-card__label">{{ card.label }}</div>
-              <div class="metric-card__value">{{ formatCount(stats[card.key]) }}</div>
-              <div class="metric-card__hint">{{ card.hint }}</div>
+        <article class="panel panel--actions">
+          <header class="panel__head">
+            <div>
+              <h3>اختصارات سريعة</h3>
+              <p>الوصول لأهم الشاشات مباشرة</p>
             </div>
-            <i class="pi pi-chevron-left metric-card__chevron" />
-          </button>
-        </div>
-      </section>
+          </header>
+          <div class="quick-grid">
+            <button
+              v-for="link in quickLinks"
+              :key="link.to + link.label"
+              type="button"
+              class="quick-card"
+              :class="`tone-${link.tone}`"
+              @click="go(link.to)"
+            >
+              <i :class="link.icon" />
+              <span>{{ link.label }}</span>
+            </button>
+          </div>
 
-      <section class="section">
-        <div class="section__head">
-          <h3>الأشخاص والحركة</h3>
-          <p>الموظفون والسكان والمركبات والزوار</p>
-        </div>
-        <div class="metric-grid metric-grid--4">
-          <button
-            v-for="(card, index) in peopleCards"
-            :key="card.key"
-            type="button"
-            class="metric-card"
-            :class="`tone-${card.tone}`"
-            :style="{ animationDelay: `${index * 55}ms` }"
-            @click="go(card.to)"
-          >
-            <span class="metric-card__accent" aria-hidden="true" />
-            <span class="metric-card__icon"><i :class="card.icon" /></span>
-            <div class="metric-card__body">
-              <div class="metric-card__label">{{ card.label }}</div>
-              <div class="metric-card__value">{{ formatCount(stats[card.key]) }}</div>
-              <div class="metric-card__hint">{{ card.hint }}</div>
+          <div class="insight-box">
+            <div class="insight-box__item">
+              <span>أقساط قيد المتابعة</span>
+              <strong>{{ formatCount(installmentsTotal) }}</strong>
             </div>
-            <i class="pi pi-chevron-left metric-card__chevron" />
-          </button>
-        </div>
+            <div class="insight-box__item">
+              <span>وحدات محجوزة</span>
+              <strong>{{ formatCount(unitsReserved) }}</strong>
+            </div>
+            <div class="insight-box__item">
+              <span>موظفون / مستخدمون</span>
+              <strong>{{ formatCount(stats.employeesCount) }} / {{ formatCount(stats.usersCount) }}</strong>
+            </div>
+          </div>
+        </article>
       </section>
     </template>
   </div>
@@ -220,7 +594,7 @@ onMounted(async () => {
 
 <style scoped>
 .dash {
-  gap: 22px;
+  gap: 20px;
 }
 
 .live-pill {
@@ -244,10 +618,9 @@ onMounted(async () => {
   animation: pulse 1.8s ease infinite;
 }
 
-.overview {
+.hero {
   display: flex;
   flex-wrap: wrap;
-  align-items: stretch;
   justify-content: space-between;
   gap: 20px;
   padding: 22px 24px;
@@ -257,51 +630,43 @@ onMounted(async () => {
     linear-gradient(135deg, #0b3d4a 0%, #156574 52%, #1f8494 100%);
   color: #f4fafb;
   box-shadow: 0 18px 40px rgba(6, 40, 48, 0.16);
-  overflow: hidden;
-  position: relative;
 }
 
-.overview__copy {
-  position: relative;
-  max-width: 520px;
-}
-
-.overview__eyebrow {
+.hero__eyebrow {
   margin: 0 0 8px;
   font-size: 0.78rem;
   font-weight: 700;
   color: rgba(244, 250, 251, 0.7);
 }
 
-.overview__title {
+.hero__title {
   margin: 0;
   font-size: clamp(1.2rem, 2vw, 1.55rem);
   font-weight: 700;
   line-height: 1.35;
-  color: #ffffff;
+  color: #fff;
 }
 
-.overview__text {
+.hero__text {
   margin: 10px 0 0;
-  color: rgba(244, 250, 251, 0.78);
+  color: rgba(244, 250, 251, 0.8);
   font-size: 0.95rem;
 }
 
-.overview__text strong {
+.hero__text strong {
   color: #fff;
   font-weight: 800;
 }
 
-.overview__metrics {
-  position: relative;
+.hero__metrics {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
 
-.mini-metric {
-  min-width: 96px;
+.hero-metric {
+  min-width: 88px;
   padding: 14px 16px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.12);
@@ -310,320 +675,299 @@ onMounted(async () => {
   text-align: center;
 }
 
-.mini-metric__value {
+.hero-metric__value {
   display: block;
-  font-size: 1.35rem;
+  font-size: 1.3rem;
   font-weight: 800;
-  line-height: 1.1;
   color: #fff;
 }
 
-.mini-metric__label {
+.hero-metric__label {
   display: block;
   margin-top: 4px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   opacity: 0.75;
 }
 
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.section__head h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-
-.section__head p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 0.88rem;
-}
-
-.featured-grid {
+.kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.feature-card {
-  --tone: #156574;
-  --tone-soft: #e6f3f5;
-  --tone-mid: rgba(21, 101, 116, 0.14);
-
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  text-align: start;
-  border: 1px solid color-mix(in srgb, var(--tone) 18%, #d3e0e5);
-  border-radius: 22px;
-  padding: 22px 20px 20px;
-  min-height: 188px;
-  display: flex;
-  flex-direction: column;
-  cursor: pointer;
-  font-family: inherit;
-  color: inherit;
-  background:
-    linear-gradient(165deg, color-mix(in srgb, var(--tone-soft) 88%, white) 0%, #ffffff 58%),
-    var(--tone-soft);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.8) inset,
-    0 10px 28px rgba(6, 40, 48, 0.06);
-  animation: rise 0.55s var(--ease-out) both;
-  transition:
-    transform 0.3s var(--ease),
-    box-shadow 0.3s var(--ease),
-    border-color 0.3s var(--ease);
-}
-
-.feature-card::after {
-  content: '';
-  position: absolute;
-  inset-inline: 18px;
-  bottom: 0;
-  height: 3px;
-  border-radius: 999px 999px 0 0;
-  background: linear-gradient(90deg, var(--tone), transparent);
-  opacity: 0.85;
-}
-
-.feature-card:hover {
-  transform: translateY(-6px) scale(1.01);
-  border-color: color-mix(in srgb, var(--tone) 40%, #d3e0e5);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.9) inset,
-    0 18px 40px color-mix(in srgb, var(--tone) 18%, rgba(6, 40, 48, 0.08));
-}
-
-.feature-card__mesh {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.35;
-  background:
-    radial-gradient(circle at 100% 0%, var(--tone-mid), transparent 42%),
-    radial-gradient(circle at 0% 100%, color-mix(in srgb, var(--tone) 8%, transparent), transparent 45%);
-  z-index: 0;
-}
-
-.feature-card__top,
-.feature-card__value,
-.feature-card__footer {
-  position: relative;
-  z-index: 1;
-}
-
-.feature-card__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: auto;
-}
-
-.feature-card__icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  font-size: 1.25rem;
-  color: #fff;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--tone) 82%, white), var(--tone));
-  box-shadow: 0 10px 20px color-mix(in srgb, var(--tone) 28%, transparent);
-}
-
-.feature-card__go {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--tone);
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid color-mix(in srgb, var(--tone) 16%, transparent);
-  opacity: 0;
-  transform: translateY(4px);
-  transition: 0.25s var(--ease);
-}
-
-.feature-card:hover .feature-card__go {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.feature-card__value {
-  margin-top: 22px;
-  font-size: clamp(2rem, 2.8vw, 2.6rem);
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  color: var(--text-strong);
-  font-variant-numeric: tabular-nums;
-}
-
-.feature-card__footer {
-  margin-top: 12px;
-}
-
-.feature-card__label {
-  font-size: 1.02rem;
-  font-weight: 700;
-  color: var(--text-strong);
-}
-
-.feature-card__hint {
-  margin-top: 3px;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.metric-grid--4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.metric-card {
+.kpi-card {
   --tone: #156574;
   --tone-soft: #e6f3f5;
 
-  position: relative;
-  overflow: hidden;
   display: flex;
-  align-items: center;
-  gap: 14px;
+  align-items: flex-start;
+  gap: 12px;
   text-align: start;
-  border: 1px solid color-mix(in srgb, var(--tone) 14%, #d3e0e5);
+  padding: 16px 14px;
   border-radius: 18px;
-  padding: 18px 16px 18px 14px;
-  min-height: 108px;
-  background:
-    linear-gradient(120deg, color-mix(in srgb, var(--tone-soft) 70%, white), #ffffff 55%);
+  border: 1px solid color-mix(in srgb, var(--tone) 14%, #d3e0e5);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--tone-soft) 75%, white), #fff 60%);
   cursor: pointer;
   font-family: inherit;
   color: inherit;
   box-shadow: 0 8px 22px rgba(6, 40, 48, 0.05);
-  animation: rise 0.55s var(--ease-out) both;
+  animation: rise 0.5s var(--ease-out) both;
   transition:
-    transform 0.28s var(--ease),
-    box-shadow 0.28s var(--ease),
-    border-color 0.28s var(--ease);
+    transform 0.25s var(--ease),
+    box-shadow 0.25s var(--ease);
 }
 
-.metric-card:hover {
+.kpi-card:hover {
   transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--tone) 35%, #d3e0e5);
-  box-shadow: 0 16px 32px color-mix(in srgb, var(--tone) 14%, rgba(6, 40, 48, 0.08));
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--tone) 14%, rgba(6, 40, 48, 0.08));
 }
 
-.metric-card__accent {
-  position: absolute;
-  inset-block: 14px;
-  inset-inline-start: 0;
-  width: 4px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, var(--tone), color-mix(in srgb, var(--tone) 40%, white));
-}
-
-.metric-card__icon {
-  flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  border-radius: 15px;
+.kpi-card__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
   display: grid;
   place-items: center;
-  font-size: 1.15rem;
-  color: var(--tone);
-  background: color-mix(in srgb, var(--tone-soft) 80%, white);
-  border: 1px solid color-mix(in srgb, var(--tone) 12%, transparent);
-  box-shadow: 0 6px 14px color-mix(in srgb, var(--tone) 10%, transparent);
+  color: #fff;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--tone) 80%, white), var(--tone));
+  flex-shrink: 0;
 }
 
-.metric-card__body {
-  min-width: 0;
-  flex: 1;
-}
-
-.metric-card__label {
-  font-size: 0.86rem;
+.kpi-card__label {
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--muted);
 }
 
-.metric-card__value {
+.kpi-card__value {
   margin-top: 4px;
-  font-size: 1.65rem;
+  font-size: 1.45rem;
   font-weight: 800;
-  color: var(--text-strong);
-  letter-spacing: -0.03em;
   line-height: 1.1;
+  color: var(--text-strong);
   font-variant-numeric: tabular-nums;
 }
 
-.metric-card__hint {
+.kpi-card__hint {
   margin-top: 4px;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   color: var(--muted);
 }
 
-.metric-card__chevron {
-  color: color-mix(in srgb, var(--tone) 55%, #8aa0a8);
-  font-size: 0.78rem;
-  opacity: 0.55;
-  transition: 0.25s var(--ease);
+.charts-grid,
+.bottom-grid {
+  display: grid;
+  gap: 14px;
 }
 
-.metric-card:hover .metric-card__chevron {
-  opacity: 1;
-  transform: translateX(-3px);
+.charts-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bottom-grid {
+  grid-template-columns: 1.2fr 1fr 0.95fr;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 18px 18px 14px;
+  box-shadow: var(--shadow-sm);
+  animation: rise 0.55s var(--ease-out) both;
+}
+
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.panel__head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.panel__head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.panel__link {
+  border: 0;
+  background: var(--brand-soft);
+  color: var(--brand-mid);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panel__link:hover {
+  background: color-mix(in srgb, var(--brand-soft) 70%, white);
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recent-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: start;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.recent-row:hover {
+  border-color: color-mix(in srgb, var(--brand-mid) 30%, var(--border));
+  background: #fff;
+}
+
+.recent-row__main {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+
+.recent-row__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand-mid);
+  background: var(--brand-soft);
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.empty-hint {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quick-card {
+  --tone: #156574;
+  --tone-soft: #e6f3f5;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--tone) 14%, #d3e0e5);
+  background: color-mix(in srgb, var(--tone-soft) 70%, white);
+  color: var(--text-strong);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.86rem;
+  cursor: pointer;
+  text-align: start;
+  transition: transform 0.2s var(--ease);
+}
+
+.quick-card i {
   color: var(--tone);
+}
+
+.quick-card:hover {
+  transform: translateY(-2px);
+}
+
+.insight-box {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #f4f8f9, #fff);
+  border: 1px solid var(--border);
+}
+
+.insight-box__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.insight-box__item strong {
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
 }
 
 .tone-teal {
   --tone: #156574;
   --tone-soft: #e6f3f5;
-  --tone-mid: rgba(21, 101, 116, 0.16);
 }
 .tone-copper {
   --tone: #c46b2b;
   --tone-soft: #f8efe6;
-  --tone-mid: rgba(196, 107, 43, 0.16);
 }
 .tone-ocean {
   --tone: #2b6cb0;
   --tone-soft: #eaf2fa;
-  --tone-mid: rgba(43, 108, 176, 0.14);
-}
-.tone-slate {
-  --tone: #3d5560;
-  --tone-soft: #eef2f4;
-  --tone-mid: rgba(61, 85, 96, 0.14);
 }
 .tone-forest {
   --tone: #1f7a5c;
   --tone-soft: #e8f5f0;
-  --tone-mid: rgba(31, 122, 92, 0.14);
 }
 .tone-rose {
   --tone: #b04a4a;
   --tone-soft: #f8ecec;
-  --tone-mid: rgba(176, 74, 74, 0.14);
+}
+.tone-amber {
+  --tone: #b7791f;
+  --tone-soft: #f7f1e4;
+}
+.tone-slate {
+  --tone: #3d5560;
+  --tone-soft: #eef2f4;
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -643,31 +987,38 @@ onMounted(async () => {
   }
 }
 
-@media (max-width: 1100px) {
-  .featured-grid,
-  .metric-grid--4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 1280px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .metric-grid {
+  .bottom-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .panel--actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .charts-grid,
+  .bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 640px) {
-  .featured-grid,
-  .metric-grid,
-  .metric-grid--4 {
+@media (max-width: 560px) {
+  .kpi-grid {
     grid-template-columns: 1fr;
   }
 
-  .overview {
+  .hero {
     padding: 18px;
-  }
-
-  .feature-card__go {
-    opacity: 1;
-    transform: none;
   }
 }
 </style>

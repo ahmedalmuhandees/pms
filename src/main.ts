@@ -6,6 +6,7 @@ import { definePreset } from '@primevue/themes'
 import ToastService from 'primevue/toastservice'
 import ConfirmationService from 'primevue/confirmationservice'
 import Tooltip from 'primevue/tooltip'
+import InputNumber from 'primevue/inputnumber'
 import 'primeicons/primeicons.css'
 import App from './App.vue'
 import router from './router'
@@ -14,6 +15,10 @@ import { installStaleChunkReload } from './utils/staleChunkReload'
 import './styles/main.css'
 
 installStaleChunkReload()
+
+// أرقام لاتينية في حقول الإدخال (0-9) بدل الأرقام العربية
+const inputNumberLocale = (InputNumber as { props?: { locale?: { default?: string } } }).props?.locale
+if (inputNumberLocale) inputNumberLocale.default = 'en-US'
 
 const AppPreset = definePreset(Aura, {
   semantic: {

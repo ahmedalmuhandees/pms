@@ -14,6 +14,8 @@ export interface SalesContractParams extends PaginationParams {
   UnitId?: string
   SalesAgentId?: string
   ContractStatus?: string | number
+  ContractType?: string | number
+  ContractPaymentType?: string | number
 }
 
 export async function getSalesContracts(params?: SalesContractParams) {

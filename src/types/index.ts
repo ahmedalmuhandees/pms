@@ -422,6 +422,35 @@ export const ContractStatus = {
 } as const
 export type ContractStatus = (typeof ContractStatus)[keyof typeof ContractStatus]
 
+/** نوع العقد: بيع / إيجار */
+export const ContractType = {
+  Sale: 1,
+  Rent: 2,
+} as const
+export type ContractType = (typeof ContractType)[keyof typeof ContractType]
+
+/** طريقة دفع العقد (منفصلة عن PaymentMethod للمدفوعات) */
+export const ContractPaymentType = {
+  Cash: 1,
+  RealEstateBank: 2,
+} as const
+export type ContractPaymentType = (typeof ContractPaymentType)[keyof typeof ContractPaymentType]
+
+/** مصدر التسعير عند إنشاء العقد */
+export const PricingMode = {
+  Manual: 1,
+  System: 2,
+} as const
+export type PricingMode = (typeof PricingMode)[keyof typeof PricingMode]
+
+/** نطاق خطة الأسعار */
+export const PricePlanScope = {
+  Block: 1,
+  Building: 2,
+  Unit: 3,
+} as const
+export type PricePlanScope = (typeof PricePlanScope)[keyof typeof PricePlanScope]
+
 export const InstallmentStatus = {
   Pending: 1,
   Paid: 2,
@@ -484,13 +513,25 @@ export interface SalesContract {
   id: string
   contractNumber: string | null
   contractDate: string
+  contractType: ContractType
+  contractPaymentType: ContractPaymentType
+  pricingMode: PricingMode
+  pricePlanId: string | null
   sellingPrice: number
   discount: number
   tax: number
   registrationFee: number
   downPayment: number
+  deliveryAmount: number
+  deliveryDate: string | null
   financedAmount: number
+  bankName: string | null
+  years: number | null
+  paymentIntervalMonths: number | null
+  firstInstallmentDate: string | null
   remainingAmount: number
+  monthsCount: number
+  installments: Installment[] | null
   contractStatus: ContractStatus
   customerId: string
   unitId: string
@@ -500,15 +541,22 @@ export interface SalesContract {
 }
 
 export interface CreateSalesContractDto {
-  contractNumber?: string | null
-  contractDate: string
+  contractType: ContractType
+  contractPaymentType: ContractPaymentType
+  pricingMode: PricingMode
+  pricePlanId?: string | null
   sellingPrice: number
   discount: number
   tax: number
   registrationFee: number
   downPayment: number
+  deliveryAmount: number
+  deliveryDate?: string | null
   financedAmount: number
-  remainingAmount: number
+  bankName?: string | null
+  years?: number | null
+  paymentIntervalMonths?: number | null
+  firstInstallmentDate?: string | null
   contractStatus: ContractStatus
   customerId: string
   unitId: string
@@ -518,11 +566,107 @@ export interface CreateSalesContractDto {
 
 export type UpdateSalesContractDto = CreateSalesContractDto
 
+export interface PricePlan {
+  id: string
+  scope: PricePlanScope
+  sellingPrice: number
+  discount: number
+  tax: number
+  registrationFee: number
+  complexId: string
+  blockId: string | null
+  buildingId: string | null
+  unitId: string | null
+  createdAt: string
+}
+
+export interface CreatePricePlanDto {
+  scope: PricePlanScope
+  sellingPrice: number
+  discount: number
+  tax: number
+  registrationFee: number
+  complexId: string
+  blockId?: string | null
+  buildingId?: string | null
+  unitId?: string | null
+}
+
+export type UpdatePricePlanDto = CreatePricePlanDto
+
+export interface ContractClause {
+  id: string
+  text: string | null
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateContractClauseDto {
+  text?: string | null
+  complexId: string
+}
+
+export type UpdateContractClauseDto = CreateContractClauseDto
+
+/** موضع شعار تصميم العقد */
+export const LogoPosition = {
+  Right: 'right',
+  Left: 'left',
+  Center: 'center',
+} as const
+export type LogoPosition = (typeof LogoPosition)[keyof typeof LogoPosition]
+
+export interface ContractDesignHeader {
+  logoUrl?: string | null
+  logoPosition?: LogoPosition | string | null
+  title?: string | null
+  subtitle?: string | null
+}
+
+export interface ContractDesignBody {
+  /** CSS مخصص يُطبَّق على عرض/طباعة العقد */
+  terms?: string | null
+  showPaymentTable?: boolean
+}
+
+export interface ContractDesignFooter {
+  footerText?: string | null
+  signatures?: string[] | null
+}
+
+export interface ContractDesignStyle {
+  primaryColor?: string | null
+  fontFamily?: string | null
+}
+
+export interface ContractDesign {
+  id: string
+  complexName: string | null
+  complexId: string
+  header: ContractDesignHeader | null
+  body: ContractDesignBody | null
+  footer: ContractDesignFooter | null
+  style: ContractDesignStyle | null
+  createdAt: string
+}
+
+export interface CreateContractDesignDto {
+  complexId: string
+  complexName?: string | null
+  header?: ContractDesignHeader | null
+  body?: ContractDesignBody | null
+  footer?: ContractDesignFooter | null
+  style?: ContractDesignStyle | null
+}
+
+export type UpdateContractDesignDto = CreateContractDesignDto
+
 export interface InstallmentPlan {
   id: string
   totalInstallments: number
   installmentAmount: number
   interestRate: number
+  paymentIntervalMonths: number
   firstDueDate: string
   lastDueDate: string
   contractId: string
@@ -534,6 +678,7 @@ export interface CreateInstallmentPlanDto {
   totalInstallments: number
   installmentAmount: number
   interestRate: number
+  paymentIntervalMonths: number
   firstDueDate: string
   lastDueDate: string
   contractId: string

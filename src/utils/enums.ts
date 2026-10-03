@@ -6,6 +6,10 @@ import {
   MaintenanceCategory,
   ReservationStatus,
   ContractStatus,
+  ContractType,
+  ContractPaymentType,
+  PricingMode,
+  PricePlanScope,
   InstallmentStatus,
   PaymentMethod,
   InvoiceStatus,
@@ -89,13 +93,98 @@ export const contractStatusOptions = [
   { value: ContractStatus.Suspended, label: 'موقوف' },
 ]
 
+export const contractTypeOptions = [
+  { value: ContractType.Sale, label: 'بيع' },
+  { value: ContractType.Rent, label: 'إيجار' },
+]
+
+export const contractPaymentTypeOptions = [
+  { value: ContractPaymentType.Cash, label: 'كاش' },
+  { value: ContractPaymentType.RealEstateBank, label: 'مصرف عقاري' },
+]
+
+export const pricingModeOptions = [
+  { value: PricingMode.Manual, label: 'يدوي' },
+  { value: PricingMode.System, label: 'من خطة الأسعار' },
+]
+
+export const pricePlanScopeOptions = [
+  { value: PricePlanScope.Block, label: 'بلوك' },
+  { value: PricePlanScope.Building, label: 'بناية' },
+  { value: PricePlanScope.Unit, label: 'وحدة' },
+]
+
+export const logoPositionOptions = [
+  { value: 'right', label: 'يمين' },
+  { value: 'left', label: 'يسار' },
+  { value: 'center', label: 'وسط' },
+]
+
+export const contractFontOptions = [
+  { value: 'Cairo', label: 'Cairo' },
+  { value: 'IBM Plex Sans Arabic', label: 'IBM Plex Sans Arabic' },
+  { value: 'Tajawal', label: 'Tajawal' },
+  { value: 'Almarai', label: 'Almarai' },
+]
+
 export const installmentStatusOptions = [
-  { value: InstallmentStatus.Pending, label: 'مستحق' },
+  { value: InstallmentStatus.Pending, label: 'غير مدفوع' },
   { value: InstallmentStatus.Paid, label: 'مدفوع' },
   { value: InstallmentStatus.Partial, label: 'مدفوع جزئياً' },
   { value: InstallmentStatus.Overdue, label: 'متأخر' },
   { value: InstallmentStatus.Cancelled, label: 'ملغى' },
 ]
+
+/** Pending قبل تاريخ الاستحقاق = غير مدفوع، وعند/بعد التاريخ = مستحقة */
+export function installmentStatusLabel(
+  status: number | null | undefined,
+  dueDate?: string | null,
+): string {
+  if (status === InstallmentStatus.Pending && dueDate) {
+    const due = new Date(dueDate)
+    if (!Number.isNaN(due.getTime())) {
+      const today = new Date()
+      due.setHours(0, 0, 0, 0)
+      today.setHours(0, 0, 0, 0)
+      return due > today ? 'غير مدفوع' : 'مستحقة'
+    }
+  }
+  return labelOf(installmentStatusOptions, status)
+}
+
+function dayStart(value: string | Date): Date | null {
+  const d = value instanceof Date ? new Date(value) : new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+export function isInstallmentPaid(status: number | null | undefined): boolean {
+  return status === InstallmentStatus.Paid || status === InstallmentStatus.Cancelled
+}
+
+/** مستحقة: وصل تاريخها ولم تُدفع بالكامل */
+export function isInstallmentDue(status: number | null | undefined, dueDate?: string | null): boolean {
+  if (isInstallmentPaid(status)) return false
+  if (status === InstallmentStatus.Overdue) return true
+  const due = dueDate ? dayStart(dueDate) : null
+  const today = dayStart(new Date())
+  if (!due || !today) return status === InstallmentStatus.Pending || status === InstallmentStatus.Partial
+  return due <= today
+}
+
+/** غير مدفوعة (قبل الاستحقاق) */
+export function isInstallmentNotYetDue(
+  status: number | null | undefined,
+  dueDate?: string | null,
+): boolean {
+  if (isInstallmentPaid(status)) return false
+  if (status !== InstallmentStatus.Pending && status !== InstallmentStatus.Partial) return false
+  const due = dueDate ? dayStart(dueDate) : null
+  const today = dayStart(new Date())
+  if (!due || !today) return false
+  return due > today
+}
 
 export const paymentMethodOptions = [
   { value: PaymentMethod.Cash, label: 'نقداً' },
@@ -129,7 +218,7 @@ export function labelOf(
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
   try {
-    return new Date(value).toLocaleDateString('ar-IQ')
+    return new Date(value).toLocaleDateString('en-GB')
   } catch {
     return value
   }
@@ -137,7 +226,7 @@ export function formatDate(value: string | null | undefined): string {
 
 export function formatMoney(value: number | null | undefined): string {
   if (value == null) return '—'
-  return new Intl.NumberFormat('ar-IQ').format(value)
+  return new Intl.NumberFormat('en-US').format(value)
 }
 
 /** Build { id, label } options for PrimeVue Select */
