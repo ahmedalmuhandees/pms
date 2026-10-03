@@ -7,6 +7,8 @@ export function usePagedList<T, P extends PaginationParams = PaginationParams>(
   fetcher: (params?: P) => Promise<PagedResult<T>>,
   initialFilters: Partial<P> = {},
 ) {
+
+  
   const notify = useNotify()
   const items = ref<T[]>([]) as Ref<T[]>
   const loading = ref(true)
