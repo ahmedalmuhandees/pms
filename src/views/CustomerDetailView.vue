@@ -5,6 +5,7 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
+import Checkbox from 'primevue/checkbox'
 import DatePicker from 'primevue/datepicker'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
@@ -25,13 +26,11 @@ import type {
   SalesContract,
   Unit,
 } from '@/types'
-import { InstallmentStatus, PaymentMethod } from '@/types'
+import { InstallmentStatus, PaymentMethod, PaymentPurpose } from '@/types'
 import { getCustomer } from '@/api/customers'
 import { getComplexes } from '@/api/complexes'
 import { getSalesContract, getSalesContracts } from '@/api/salesContracts'
-import { createPayment, getPayments } from '@/api/payments'
-import { updateInstallment } from '@/api/installments'
-import { createReceipt } from '@/api/receipts'
+import { downloadPaymentPdf, getPayments, processPayment } from '@/api/payments'
 import { getUnits } from '@/api/units'
 import { getEmployees } from '@/api/employees'
 import { getErrorMessage } from '@/api/client'
@@ -41,7 +40,6 @@ import {
   asSelectOptions,
   contractPaymentTypeOptions,
   contractStatusOptions,
-  contractTypeOptions,
   formatDate,
   formatMoney,
   installmentStatusLabel,
@@ -66,6 +64,7 @@ const loading = ref(true)
 const customer = ref<Customer | null>(null)
 const complex = ref<Complex | null>(null)
 const contracts = ref<SalesContract[]>([])
+const selectedContractId = ref<string | null>(null)
 const installments = ref<CustomerInstallment[]>([])
 const payments = ref<Payment[]>([])
 const employees = ref<Employee[]>([])
@@ -74,7 +73,10 @@ const activeTab = ref('due')
 
 const payVisible = ref(false)
 const paying = ref(false)
+const printingId = ref<string | null>(null)
 const payingInstallment = ref<CustomerInstallment | null>(null)
+const payingPurpose = ref<PaymentPurpose>(PaymentPurpose.Installment)
+const splitPartial = ref(false)
 const paymentDateModel = ref<Date | null>(null)
 const payForm = reactive<CreatePaymentDto>({
   paymentMethod: PaymentMethod.Cash,
@@ -86,6 +88,8 @@ const payForm = reactive<CreatePaymentDto>({
   customerId: '',
   receivedById: '',
   complexId: '',
+  purpose: PaymentPurpose.Installment,
+  splitPartial: false,
 })
 
 const fullName = computed(() => {
@@ -93,28 +97,61 @@ const fullName = computed(() => {
   return [customer.value.firstName, customer.value.lastName].filter(Boolean).join(' ') || '—'
 })
 
+const selectedContract = computed(
+  () => contracts.value.find((c) => c.id === selectedContractId.value) ?? null,
+)
+
+const contractOptions = computed(() =>
+  asSelectOptions(contracts.value, (c) => c.contractNumber || c.id.slice(0, 8)),
+)
+
+const contractInstallments = computed(() =>
+  installments.value.filter((i) => i.contractId === selectedContractId.value),
+)
+
+const contractPayments = computed(() =>
+  payments.value.filter((p) => p.contractId === selectedContractId.value),
+)
+
 const dueInstallments = computed(() =>
-  installments.value
+  contractInstallments.value
     .filter((i) => isInstallmentDue(i.status, i.dueDate))
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
 )
 
 const unpaidInstallments = computed(() =>
-  installments.value
+  contractInstallments.value
     .filter((i) => isInstallmentNotYetDue(i.status, i.dueDate))
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
 )
 
-const dueTotal = computed(() =>
-  dueInstallments.value.reduce((sum, i) => sum + remainingOf(i), 0),
+const partialPayments = computed(() =>
+  contractPayments.value.filter((p) => p.isPartialSplit),
 )
 
+const dueTotal = computed(() => dueInstallments.value.reduce((sum, i) => sum + remainingOf(i), 0))
 const unpaidTotal = computed(() =>
   unpaidInstallments.value.reduce((sum, i) => sum + remainingOf(i), 0),
 )
-
 const paidTotal = computed(() =>
-  payments.value.reduce((sum, p) => sum + (p.amount || 0), 0),
+  contractPayments.value.reduce((sum, p) => sum + (p.amount || 0), 0),
+)
+
+const downPaid = computed(() =>
+  contractPayments.value
+    .filter((p) => p.purpose === PaymentPurpose.DownPayment)
+    .reduce((s, p) => s + p.amount, 0),
+)
+const deliveryPaid = computed(() =>
+  contractPayments.value
+    .filter((p) => p.purpose === PaymentPurpose.Delivery)
+    .reduce((s, p) => s + p.amount, 0),
+)
+const downRemaining = computed(() =>
+  Math.max(0, (selectedContract.value?.downPayment || 0) - downPaid.value),
+)
+const deliveryRemaining = computed(() =>
+  Math.max(0, (selectedContract.value?.deliveryAmount || 0) - deliveryPaid.value),
 )
 
 const employeeOptions = computed(() =>
@@ -130,13 +167,21 @@ function remainingOf(row: Installment) {
   return Math.max(0, (row.amount || 0) + (row.penalty || 0) - (row.paidAmount || 0))
 }
 
-function openPay(row: CustomerInstallment) {
+function purposeLabel(purpose: PaymentPurpose | undefined) {
+  if (purpose === PaymentPurpose.DownPayment) return 'دفعة المقدمة'
+  if (purpose === PaymentPurpose.Delivery) return 'دفعة الاستلام'
+  return 'قسط'
+}
+
+function openPayInstallment(row: CustomerInstallment) {
   const remaining = remainingOf(row)
   if (remaining <= 0) {
     notify.warning('هذا القسط مدفوع بالكامل')
     return
   }
   payingInstallment.value = row
+  payingPurpose.value = PaymentPurpose.Installment
+  splitPartial.value = false
   paymentDateModel.value = new Date()
   Object.assign(payForm, {
     paymentMethod: PaymentMethod.Cash,
@@ -148,12 +193,42 @@ function openPay(row: CustomerInstallment) {
     customerId: customerId.value,
     receivedById: employees.value.find((e) => e.complexId === row.complexId)?.id || '',
     complexId: row.complexId,
+    purpose: PaymentPurpose.Installment,
+    splitPartial: false,
+  })
+  payVisible.value = true
+}
+
+function openPayPurpose(purpose: PaymentPurpose) {
+  if (!selectedContract.value) return
+  const remaining =
+    purpose === PaymentPurpose.DownPayment ? downRemaining.value : deliveryRemaining.value
+  if (remaining <= 0) {
+    notify.warning('هذه الدفعة مسددة بالكامل')
+    return
+  }
+  payingInstallment.value = null
+  payingPurpose.value = purpose
+  splitPartial.value = false
+  paymentDateModel.value = new Date()
+  Object.assign(payForm, {
+    paymentMethod: PaymentMethod.Cash,
+    referenceNumber: null,
+    amount: remaining,
+    paymentDate: new Date().toISOString(),
+    installmentId: null,
+    contractId: selectedContract.value.id,
+    customerId: customerId.value,
+    receivedById:
+      employees.value.find((e) => e.complexId === selectedContract.value!.complexId)?.id || '',
+    complexId: selectedContract.value.complexId,
+    purpose,
+    splitPartial: false,
   })
   payVisible.value = true
 }
 
 async function submitPayment() {
-  if (!payingInstallment.value) return
   if (!payForm.receivedById) {
     notify.warning('اختر المستلم')
     return
@@ -166,57 +241,67 @@ async function submitPayment() {
     notify.warning('أدخل مبلغاً صالحاً')
     return
   }
-  const remaining = remainingOf(payingInstallment.value)
-  if (payForm.amount > remaining) {
-    notify.warning(`المبلغ أكبر من المتبقي (${formatMoney(remaining)})`)
+
+  const maxAmount =
+    payingPurpose.value === PaymentPurpose.DownPayment
+      ? downRemaining.value
+      : payingPurpose.value === PaymentPurpose.Delivery
+        ? deliveryRemaining.value
+        : payingInstallment.value
+          ? remainingOf(payingInstallment.value)
+          : 0
+
+  if (payForm.amount > maxAmount) {
+    notify.warning(`المبلغ أكبر من المتبقي (${formatMoney(maxAmount)})`)
     return
   }
+
+  const isPartialInstallment =
+    payingPurpose.value === PaymentPurpose.Installment &&
+    payingInstallment.value != null &&
+    payForm.amount < remainingOf(payingInstallment.value)
 
   paying.value = true
   try {
     payForm.paymentDate = paymentDateModel.value.toISOString()
-    const payment = await createPayment({ ...payForm })
+    payForm.purpose = payingPurpose.value
+    payForm.splitPartial = splitPartial.value && isPartialInstallment
 
-    const inst = payingInstallment.value
-    const newPaid = (inst.paidAmount || 0) + payForm.amount
-    const totalDue = (inst.amount || 0) + (inst.penalty || 0)
-    let status: (typeof InstallmentStatus)[keyof typeof InstallmentStatus] = InstallmentStatus.Pending
-    if (newPaid >= totalDue) status = InstallmentStatus.Paid
-    else if (newPaid > 0) status = InstallmentStatus.Partial
-
-    await updateInstallment(inst.id, {
-      dueDate: inst.dueDate,
-      amount: inst.amount,
-      paidAmount: newPaid,
-      penalty: inst.penalty,
-      status,
-      paidDate: status === InstallmentStatus.Paid ? payForm.paymentDate : inst.paidDate,
-      planID: inst.planID,
-      complexId: inst.complexId,
-    })
-
-    try {
-      await createReceipt({
-        receiptNumber: null,
-        date: payForm.paymentDate,
-        amount: payForm.amount,
-        paymentId: payment.id,
-      })
-    } catch {
-      // الدفع نجح؛ الوصل اختياري إن فشل إنشاؤه
+    if (isPartialInstallment && !splitPartial.value) {
+      notify.warning('لتسجيل مبلغ أقل من المتبقي فعّل خيار «دفع جزئي»')
+      paying.value = false
+      return
     }
 
+    const result = await processPayment({ ...payForm })
     notify.success(
-      status === InstallmentStatus.Paid
-        ? 'تم دفع القسط بالكامل'
-        : 'تم تسجيل دفعة جزئية على القسط',
+      result.wasPartialSplit
+        ? 'تم تسجيل دفعة جزئية وتقسيم المتبقي كدين'
+        : 'تم تسجيل الدفعة بنجاح',
     )
     payVisible.value = false
     await loadProfile()
+    if (result.payment?.id) {
+      await printPayment(result.payment.id)
+    }
   } catch (error) {
     notify.error(getErrorMessage(error))
   } finally {
     paying.value = false
+  }
+}
+
+async function printPayment(paymentId: string) {
+  printingId.value = paymentId
+  try {
+    const blob = await downloadPaymentPdf(paymentId)
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (error) {
+    notify.error(getErrorMessage(error))
+  } finally {
+    printingId.value = null
   }
 }
 
@@ -257,6 +342,10 @@ async function loadProfile() {
     )
     contracts.value = detailed
 
+    if (!selectedContractId.value || !detailed.some((c) => c.id === selectedContractId.value)) {
+      selectedContractId.value = detailed[0]?.id ?? null
+    }
+
     installments.value = detailed.flatMap((contract) =>
       (contract.installments ?? []).map((inst) => ({
         ...inst,
@@ -273,6 +362,7 @@ async function loadProfile() {
 }
 
 watch(customerId, () => {
+  selectedContractId.value = null
   void loadProfile()
 })
 
@@ -300,29 +390,6 @@ onMounted(() => {
     </div>
 
     <template v-else-if="customer">
-      <div class="summary-row">
-        <div class="summary-card is-due">
-          <span>المستحق الآن</span>
-          <strong>{{ formatMoney(dueTotal) }}</strong>
-          <small>{{ dueInstallments.length }} قسط</small>
-        </div>
-        <div class="summary-card is-unpaid">
-          <span>غير مدفوع (قادم)</span>
-          <strong>{{ formatMoney(unpaidTotal) }}</strong>
-          <small>{{ unpaidInstallments.length }} قسط</small>
-        </div>
-        <div class="summary-card is-paid">
-          <span>إجمالي المدفوعات</span>
-          <strong>{{ formatMoney(paidTotal) }}</strong>
-          <small>{{ payments.length }} دفعة</small>
-        </div>
-        <div class="summary-card">
-          <span>العقود</span>
-          <strong>{{ contracts.length }}</strong>
-          <small>عقد مرتبط</small>
-        </div>
-      </div>
-
       <div class="data-panel">
         <h3 class="section-title">البيانات الشخصية</h3>
         <div class="detail-grid">
@@ -343,36 +410,12 @@ onMounted(() => {
             <span class="detail-value">{{ customer.nationalID || '—' }}</span>
           </div>
           <div class="detail-item">
-            <span class="detail-label">جواز السفر</span>
-            <span class="detail-value">{{ customer.passport || '—' }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">تاريخ الميلاد</span>
-            <span class="detail-value">{{ formatDate(customer.birthDate) }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">الحالة الاجتماعية</span>
-            <span class="detail-value">{{ labelOf(maritalStatusOptions, customer.maritalStatus) }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">المهنة</span>
-            <span class="detail-value">{{ customer.occupation || '—' }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">جهة العمل</span>
-            <span class="detail-value">{{ customer.employer || '—' }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">الدخل الشهري</span>
-            <span class="detail-value">{{ formatMoney(customer.monthlyIncome) }}</span>
-          </div>
-          <div class="detail-item">
             <span class="detail-label">المجمع</span>
             <span class="detail-value">{{ complex?.nameAr || complex?.name || '—' }}</span>
           </div>
           <div class="detail-item">
-            <span class="detail-label">تاريخ التسجيل</span>
-            <span class="detail-value">{{ formatDate(customer.createdAt) }}</span>
+            <span class="detail-label">الحالة الاجتماعية</span>
+            <span class="detail-value">{{ labelOf(maritalStatusOptions, customer.maritalStatus) }}</span>
           </div>
           <div class="detail-item full">
             <span class="detail-label">العنوان</span>
@@ -381,230 +424,349 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="data-panel">
-        <h3 class="section-title">العقود</h3>
-        <DataTable :value="contracts" size="small" striped-rows>
-          <Column header="رقم العقد" style="width: 110px">
-            <template #body="{ data }">{{ data.contractNumber || data.id.slice(0, 8) }}</template>
-          </Column>
-          <Column header="النوع" style="width: 90px">
-            <template #body="{ data }">{{ labelOf(contractTypeOptions, data.contractType) }}</template>
-          </Column>
-          <Column header="الدفع" style="width: 110px">
-            <template #body="{ data }">
-              {{ labelOf(contractPaymentTypeOptions, data.contractPaymentType) }}
-            </template>
-          </Column>
-          <Column header="الوحدة" style="width: 100px">
-            <template #body="{ data }">{{ unitMap[data.unitId] || data.unitId.slice(0, 8) }}</template>
-          </Column>
-          <Column header="سعر البيع" style="width: 120px">
-            <template #body="{ data }">{{ formatMoney(data.sellingPrice) }}</template>
-          </Column>
-          <Column header="المتبقي" style="width: 120px">
-            <template #body="{ data }">{{ formatMoney(data.remainingAmount) }}</template>
-          </Column>
-          <Column header="الحالة" style="width: 90px">
-            <template #body="{ data }">{{ labelOf(contractStatusOptions, data.contractStatus) }}</template>
-          </Column>
-          <Column header="التاريخ" style="width: 110px">
-            <template #body="{ data }">{{ formatDate(data.contractDate) }}</template>
-          </Column>
-          <template #empty><div class="empty-box">لا توجد عقود</div></template>
-        </DataTable>
-      </div>
+      <div class="data-panel contract-panel">
+        <div class="contract-toolbar">
+          <h3 class="section-title">العقد والدفعات</h3>
+          <Select
+            v-model="selectedContractId"
+            :options="contractOptions"
+            option-label="label"
+            option-value="id"
+            placeholder="اختر العقد"
+            checkmark
+            append-to="body"
+            class="contract-select"
+          />
+        </div>
 
-      <div class="data-panel">
-        <Tabs v-model:value="activeTab">
-          <TabList>
-            <Tab value="due">
-              <span class="tab-label">
-                مستحقة
-                <span class="tab-count">{{ dueInstallments.length }}</span>
-              </span>
-            </Tab>
-            <Tab value="unpaid">
-              <span class="tab-label">
-                غير مدفوعة
-                <span class="tab-count">{{ unpaidInstallments.length }}</span>
-              </span>
-            </Tab>
-            <Tab value="payments">
-              <span class="tab-label">
-                المدفوعات
-                <span class="tab-count">{{ payments.length }}</span>
-              </span>
-            </Tab>
-          </TabList>
-          <TabPanels>
-            <TabPanel value="due">
-              <p class="tab-hint">أقساط حان تاريخ استحقاقها — يمكنك الدفع مباشرة من هنا</p>
-              <DataTable :value="dueInstallments" size="small" striped-rows>
-                <Column header="الاستحقاق" style="width: 120px">
-                  <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
-                </Column>
-                <Column header="العقد" style="width: 110px">
-                  <template #body="{ data }">
-                    {{ data.contractNumber || data.contractId.slice(0, 8) }}
-                  </template>
-                </Column>
-                <Column header="المبلغ" style="width: 110px">
-                  <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
-                </Column>
-                <Column header="المدفوع" style="width: 110px">
-                  <template #body="{ data }">{{ formatMoney(data.paidAmount) }}</template>
-                </Column>
-                <Column header="المتبقي" style="width: 110px">
-                  <template #body="{ data }">{{ formatMoney(remainingOf(data)) }}</template>
-                </Column>
-                <Column header="الحالة" style="width: 100px">
-                  <template #body="{ data }">
-                    {{
-                      data.status === InstallmentStatus.Overdue
-                        ? 'متأخر'
-                        : installmentStatusLabel(data.status, data.dueDate)
-                    }}
-                  </template>
-                </Column>
-                <Column header="" style="width: 100px">
-                  <template #body="{ data }">
-                    <Button
-                      label="دفع"
-                      icon="pi pi-wallet"
-                      size="small"
-                      :disabled="remainingOf(data) <= 0"
-                      @click="openPay(data)"
-                    />
-                  </template>
-                </Column>
-                <template #empty><div class="empty-box">لا توجد أقساط مستحقة</div></template>
-              </DataTable>
-            </TabPanel>
+        <template v-if="selectedContract">
+          <div class="summary-row">
+            <div class="summary-card is-due">
+              <span>المستحق الآن</span>
+              <strong>{{ formatMoney(dueTotal) }}</strong>
+              <small>{{ dueInstallments.length }} قسط</small>
+            </div>
+            <div class="summary-card is-unpaid">
+              <span>غير مدفوع (قادم)</span>
+              <strong>{{ formatMoney(unpaidTotal) }}</strong>
+              <small>{{ unpaidInstallments.length }} قسط</small>
+            </div>
+            <div class="summary-card is-paid">
+              <span>مدفوعات هذا العقد</span>
+              <strong>{{ formatMoney(paidTotal) }}</strong>
+              <small>{{ contractPayments.length }} دفعة</small>
+            </div>
+            <div class="summary-card">
+              <span>المتبقي بالعقد</span>
+              <strong>{{ formatMoney(selectedContract.remainingAmount) }}</strong>
+              <small>{{ unitMap[selectedContract.unitId] || 'وحدة' }}</small>
+            </div>
+          </div>
 
-            <TabPanel value="unpaid">
-              <p class="tab-hint">أقساط قادمة — يمكن الدفع المبكر إن رغبت</p>
-              <DataTable :value="unpaidInstallments" size="small" striped-rows>
-                <Column header="الاستحقاق" style="width: 120px">
-                  <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
-                </Column>
-                <Column header="العقد" style="width: 110px">
-                  <template #body="{ data }">
-                    {{ data.contractNumber || data.contractId.slice(0, 8) }}
-                  </template>
-                </Column>
-                <Column header="المبلغ" style="width: 110px">
-                  <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
-                </Column>
-                <Column header="المتبقي" style="width: 110px">
-                  <template #body="{ data }">{{ formatMoney(remainingOf(data)) }}</template>
-                </Column>
-                <Column header="الحالة" style="width: 100px">
-                  <template #body="{ data }">
-                    {{ installmentStatusLabel(data.status, data.dueDate) }}
-                  </template>
-                </Column>
-                <Column header="" style="width: 100px">
-                  <template #body="{ data }">
-                    <Button
-                      label="دفع"
-                      icon="pi pi-wallet"
-                      size="small"
-                      severity="secondary"
-                      outlined
-                      :disabled="remainingOf(data) <= 0"
-                      @click="openPay(data)"
-                    />
-                  </template>
-                </Column>
-                <template #empty><div class="empty-box">لا توجد أقساط غير مدفوعة قادمة</div></template>
-              </DataTable>
-            </TabPanel>
+          <div class="purpose-cards">
+            <div class="purpose-card">
+              <div class="purpose-card__head">
+                <h4>دفعة المقدمة</h4>
+                <span
+                  class="badge"
+                  :class="downRemaining <= 0 ? 'is-ok' : 'is-warn'"
+                >
+                  {{ downRemaining <= 0 ? 'مسددة' : 'متبقي' }}
+                </span>
+              </div>
+              <div class="purpose-card__grid">
+                <div><span>المطلوب</span><strong>{{ formatMoney(selectedContract.downPayment) }}</strong></div>
+                <div><span>المدفوع</span><strong>{{ formatMoney(downPaid) }}</strong></div>
+                <div><span>المتبقي</span><strong>{{ formatMoney(downRemaining) }}</strong></div>
+              </div>
+              <Button
+                label="تسجيل دفعة"
+                icon="pi pi-wallet"
+                size="small"
+                :disabled="downRemaining <= 0"
+                @click="openPayPurpose(PaymentPurpose.DownPayment)"
+              />
+            </div>
 
-            <TabPanel value="payments">
-              <p class="tab-hint">سجل الدفعات المستلمة من العميل</p>
-              <DataTable :value="payments" size="small" striped-rows>
-                <Column header="التاريخ" style="width: 120px">
-                  <template #body="{ data }">{{ formatDate(data.paymentDate) }}</template>
-                </Column>
-                <Column header="المبلغ" style="width: 120px">
-                  <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
-                </Column>
-                <Column header="الطريقة" style="width: 120px">
-                  <template #body="{ data }">
-                    {{ labelOf(paymentMethodOptions, data.paymentMethod) }}
-                  </template>
-                </Column>
-                <Column header="المرجع">
-                  <template #body="{ data }">{{ data.referenceNumber || '—' }}</template>
-                </Column>
-                <template #empty><div class="empty-box">لا توجد مدفوعات</div></template>
-              </DataTable>
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
+            <div class="purpose-card">
+              <div class="purpose-card__head">
+                <h4>دفعة الاستلام</h4>
+                <span
+                  class="badge"
+                  :class="deliveryRemaining <= 0 ? 'is-ok' : 'is-warn'"
+                >
+                  {{ deliveryRemaining <= 0 ? 'مسددة' : 'متبقي' }}
+                </span>
+              </div>
+              <div class="purpose-card__grid">
+                <div><span>المطلوب</span><strong>{{ formatMoney(selectedContract.deliveryAmount) }}</strong></div>
+                <div><span>المدفوع</span><strong>{{ formatMoney(deliveryPaid) }}</strong></div>
+                <div><span>المتبقي</span><strong>{{ formatMoney(deliveryRemaining) }}</strong></div>
+              </div>
+              <Button
+                label="تسجيل دفعة"
+                icon="pi pi-wallet"
+                size="small"
+                :disabled="deliveryRemaining <= 0"
+                @click="openPayPurpose(PaymentPurpose.Delivery)"
+              />
+            </div>
+          </div>
+
+          <div class="contract-meta">
+            <span>رقم العقد: <strong>{{ selectedContract.contractNumber || '—' }}</strong></span>
+            <span>الحالة: <strong>{{ labelOf(contractStatusOptions, selectedContract.contractStatus) }}</strong></span>
+            <span>الدفع: <strong>{{ labelOf(contractPaymentTypeOptions, selectedContract.contractPaymentType) }}</strong></span>
+            <span>التاريخ: <strong>{{ formatDate(selectedContract.contractDate) }}</strong></span>
+          </div>
+
+          <Tabs v-model:value="activeTab">
+            <TabList>
+              <Tab value="due">
+                <span class="tab-label">مستحقة <span class="tab-count">{{ dueInstallments.length }}</span></span>
+              </Tab>
+              <Tab value="unpaid">
+                <span class="tab-label">غير مدفوعة <span class="tab-count">{{ unpaidInstallments.length }}</span></span>
+              </Tab>
+              <Tab value="payments">
+                <span class="tab-label">سجل المدفوعات <span class="tab-count">{{ contractPayments.length }}</span></span>
+              </Tab>
+              <Tab value="partial">
+                <span class="tab-label">مدفوعات جزئية <span class="tab-count">{{ partialPayments.length }}</span></span>
+              </Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel value="due">
+                <DataTable :value="dueInstallments" size="small" striped-rows>
+                  <Column header="الاستحقاق" style="width: 120px">
+                    <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
+                  </Column>
+                  <Column header="المبلغ" style="width: 110px">
+                    <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
+                  </Column>
+                  <Column header="المدفوع" style="width: 110px">
+                    <template #body="{ data }">{{ formatMoney(data.paidAmount) }}</template>
+                  </Column>
+                  <Column header="المتبقي" style="width: 110px">
+                    <template #body="{ data }">{{ formatMoney(remainingOf(data)) }}</template>
+                  </Column>
+                  <Column header="الحالة" style="width: 100px">
+                    <template #body="{ data }">
+                      {{ installmentStatusLabel(data.status, data.dueDate) }}
+                    </template>
+                  </Column>
+                  <Column header="" style="width: 100px">
+                    <template #body="{ data }">
+                      <Button
+                        label="دفع"
+                        icon="pi pi-wallet"
+                        size="small"
+                        :disabled="remainingOf(data) <= 0"
+                        @click="openPayInstallment(data)"
+                      />
+                    </template>
+                  </Column>
+                  <template #empty><div class="empty-box">لا توجد أقساط مستحقة</div></template>
+                </DataTable>
+              </TabPanel>
+
+              <TabPanel value="unpaid">
+                <DataTable :value="unpaidInstallments" size="small" striped-rows>
+                  <Column header="الاستحقاق" style="width: 120px">
+                    <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
+                  </Column>
+                  <Column header="المبلغ" style="width: 110px">
+                    <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
+                  </Column>
+                  <Column header="المتبقي" style="width: 110px">
+                    <template #body="{ data }">{{ formatMoney(remainingOf(data)) }}</template>
+                  </Column>
+                  <Column header="الحالة" style="width: 100px">
+                    <template #body="{ data }">
+                      {{ installmentStatusLabel(data.status, data.dueDate) }}
+                    </template>
+                  </Column>
+                  <Column header="" style="width: 100px">
+                    <template #body="{ data }">
+                      <Button
+                        label="دفع"
+                        icon="pi pi-wallet"
+                        size="small"
+                        severity="secondary"
+                        outlined
+                        :disabled="remainingOf(data) <= 0"
+                        @click="openPayInstallment(data)"
+                      />
+                    </template>
+                  </Column>
+                  <template #empty><div class="empty-box">لا توجد أقساط قادمة</div></template>
+                </DataTable>
+              </TabPanel>
+
+              <TabPanel value="payments">
+                <DataTable :value="contractPayments" size="small" striped-rows>
+                  <Column header="التاريخ" style="width: 120px">
+                    <template #body="{ data }">{{ formatDate(data.paymentDate) }}</template>
+                  </Column>
+                  <Column header="النوع" style="width: 120px">
+                    <template #body="{ data }">{{ purposeLabel(data.purpose) }}</template>
+                  </Column>
+                  <Column header="المبلغ" style="width: 120px">
+                    <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
+                  </Column>
+                  <Column header="الطريقة" style="width: 120px">
+                    <template #body="{ data }">
+                      {{ labelOf(paymentMethodOptions, data.paymentMethod) }}
+                    </template>
+                  </Column>
+                  <Column header="المرجع">
+                    <template #body="{ data }">{{ data.referenceNumber || '—' }}</template>
+                  </Column>
+                  <Column header="" style="width: 110px">
+                    <template #body="{ data }">
+                      <Button
+                        label="طباعة"
+                        icon="pi pi-print"
+                        size="small"
+                        outlined
+                        :loading="printingId === data.id"
+                        @click="printPayment(data.id)"
+                      />
+                    </template>
+                  </Column>
+                  <template #empty><div class="empty-box">لا توجد مدفوعات لهذا العقد</div></template>
+                </DataTable>
+              </TabPanel>
+
+              <TabPanel value="partial">
+                <p class="tab-hint">سجل الدفعات الجزئية التي قسّمت القسط إلى مدفوع + دين</p>
+                <DataTable :value="partialPayments" size="small" striped-rows>
+                  <Column header="التاريخ" style="width: 120px">
+                    <template #body="{ data }">{{ formatDate(data.paymentDate) }}</template>
+                  </Column>
+                  <Column header="المبلغ المدفوع" style="width: 130px">
+                    <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
+                  </Column>
+                  <Column header="الطريقة" style="width: 120px">
+                    <template #body="{ data }">
+                      {{ labelOf(paymentMethodOptions, data.paymentMethod) }}
+                    </template>
+                  </Column>
+                  <Column header="" style="width: 110px">
+                    <template #body="{ data }">
+                      <Button
+                        label="طباعة"
+                        icon="pi pi-print"
+                        size="small"
+                        outlined
+                        :loading="printingId === data.id"
+                        @click="printPayment(data.id)"
+                      />
+                    </template>
+                  </Column>
+                  <template #empty><div class="empty-box">لا توجد مدفوعات جزئية</div></template>
+                </DataTable>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </template>
+        <div v-else class="empty-box">لا توجد عقود لهذا العميل</div>
       </div>
 
       <Dialog
         v-model:visible="payVisible"
         modal
-        header="تسجيل دفعة على القسط"
-        :style="{ width: '520px' }"
+        :header="
+          payingPurpose === PaymentPurpose.DownPayment
+            ? 'تسجيل دفعة المقدمة'
+            : payingPurpose === PaymentPurpose.Delivery
+              ? 'تسجيل دفعة الاستلام'
+              : 'تسجيل دفعة على القسط'
+        "
+        :style="{ width: '540px' }"
         :breakpoints="{ '640px': '95vw' }"
       >
-        <template v-if="payingInstallment">
-          <div class="pay-summary">
-            <div>
-              <span>العقد</span>
-              <strong>{{ payingInstallment.contractNumber || payingInstallment.contractId.slice(0, 8) }}</strong>
-            </div>
-            <div>
-              <span>الاستحقاق</span>
-              <strong>{{ formatDate(payingInstallment.dueDate) }}</strong>
-            </div>
-            <div>
-              <span>المتبقي</span>
-              <strong>{{ formatMoney(remainingOf(payingInstallment)) }}</strong>
-            </div>
+        <div class="pay-summary">
+          <div>
+            <span>العقد</span>
+            <strong>{{ selectedContract?.contractNumber || '—' }}</strong>
           </div>
-          <div class="form-grid">
-            <div class="field">
-              <label>المبلغ</label>
-              <InputNumber v-model="payForm.amount" :min="0" :max="remainingOf(payingInstallment)" />
-            </div>
-            <div class="field">
-              <label>طريقة الدفع</label>
-              <Select
-                v-model="payForm.paymentMethod"
-                :options="paymentMethodOptions"
-                option-label="label"
-                option-value="value"
-                checkmark
-                append-to="body"
-              />
-            </div>
-            <div class="field">
-              <label>تاريخ الدفع</label>
-              <DatePicker v-model="paymentDateModel" date-format="yy-mm-dd" show-icon />
-            </div>
-            <div class="field">
-              <label>المستلم</label>
-              <Select
-                v-model="payForm.receivedById"
-                :options="employeeOptions"
-                option-label="label"
-                option-value="id"
-                placeholder="اختر الموظف"
-                checkmark
-                append-to="body"
-                filter
-              />
-            </div>
-            <div class="field full">
-              <label>رقم المرجع (اختياري)</label>
-              <InputText v-model="payForm.referenceNumber" />
-            </div>
+          <div v-if="payingInstallment">
+            <span>الاستحقاق</span>
+            <strong>{{ formatDate(payingInstallment.dueDate) }}</strong>
           </div>
-        </template>
+          <div>
+            <span>المتبقي</span>
+            <strong>
+              {{
+                formatMoney(
+                  payingInstallment
+                    ? remainingOf(payingInstallment)
+                    : payingPurpose === PaymentPurpose.DownPayment
+                      ? downRemaining
+                      : deliveryRemaining,
+                )
+              }}
+            </strong>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label>المبلغ</label>
+            <InputNumber
+              v-model="payForm.amount"
+              :min="0"
+              :max="
+                payingInstallment
+                  ? remainingOf(payingInstallment)
+                  : payingPurpose === PaymentPurpose.DownPayment
+                    ? downRemaining
+                    : deliveryRemaining
+              "
+            />
+          </div>
+          <div class="field">
+            <label>طريقة الدفع</label>
+            <Select
+              v-model="payForm.paymentMethod"
+              :options="paymentMethodOptions"
+              option-label="label"
+              option-value="value"
+              checkmark
+              append-to="body"
+            />
+          </div>
+          <div class="field">
+            <label>تاريخ الدفع</label>
+            <DatePicker v-model="paymentDateModel" date-format="yy-mm-dd" show-icon />
+          </div>
+          <div class="field">
+            <label>المستلم</label>
+            <Select
+              v-model="payForm.receivedById"
+              :options="employeeOptions"
+              option-label="label"
+              option-value="id"
+              placeholder="اختر الموظف"
+              checkmark
+              append-to="body"
+              filter
+            />
+          </div>
+          <div class="field full">
+            <label>رقم المرجع (اختياري)</label>
+            <InputText v-model="payForm.referenceNumber" />
+          </div>
+          <div
+            v-if="payingInstallment && payForm.amount < remainingOf(payingInstallment)"
+            class="field full partial-row"
+          >
+            <Checkbox v-model="splitPartial" binary input-id="splitPartial" />
+            <label for="splitPartial">
+              دفع جزئي — تقسيم القسط إلى فاتورة مدفوعة والمتبقي كدين على العميل
+            </label>
+          </div>
+        </div>
         <template #footer>
           <div class="dialog-actions">
             <Button label="إلغاء" severity="secondary" outlined @click="payVisible = false" />
@@ -623,6 +785,22 @@ onMounted(() => {
   display: grid;
   place-items: center;
   min-height: 240px;
+}
+
+.contract-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.contract-toolbar .section-title {
+  margin: 0;
+}
+
+.contract-select {
+  min-width: 220px;
 }
 
 .summary-row {
@@ -668,6 +846,92 @@ onMounted(() => {
 .summary-card.is-paid {
   border-color: rgba(21, 128, 61, 0.25);
   background: rgba(21, 128, 61, 0.06);
+}
+
+.purpose-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.purpose-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(21, 101, 116, 0.05), var(--surface));
+}
+
+.purpose-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.purpose-card__head h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.badge.is-ok {
+  background: rgba(21, 128, 61, 0.12);
+  color: #15803d;
+}
+
+.badge.is-warn {
+  background: rgba(180, 120, 20, 0.14);
+  color: #a16207;
+}
+
+.purpose-card__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.purpose-card__grid div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.purpose-card__grid span {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.purpose-card__grid strong {
+  font-weight: 800;
+}
+
+.contract-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(21, 101, 116, 0.05);
+  border: 1px solid var(--border);
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.contract-meta strong {
+  color: var(--text);
 }
 
 .section-title {
@@ -765,18 +1029,41 @@ onMounted(() => {
   grid-column: 1 / -1;
 }
 
+.partial-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(180, 120, 20, 0.08);
+  border: 1px solid rgba(180, 120, 20, 0.22);
+}
+
+.partial-row label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
 @media (max-width: 960px) {
   .summary-row,
   .detail-grid,
+  .purpose-cards,
   .pay-summary {
     grid-template-columns: 1fr 1fr;
+  }
+  .contract-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
 @media (max-width: 640px) {
   .summary-row,
   .detail-grid,
-  .pay-summary {
+  .purpose-cards,
+  .pay-summary,
+  .purpose-card__grid {
     grid-template-columns: 1fr;
   }
 }

@@ -281,6 +281,46 @@ export interface CreateUserDto {
 
 export type UpdateUserDto = CreateUserDto
 
+export interface Agent {
+  id: string
+  name: string
+  complexId: string
+  complexName: string | null
+  subscriptionStartDate: string
+  subscriptionEndDate: string
+  email: string
+  phone: string | null
+  address: string | null
+  notes: string | null
+  userId: string
+  isSubscriptionActive: boolean
+  createdAt: string
+}
+
+export interface CreateAgentDto {
+  name: string
+  complexId: string
+  subscriptionStartDate: string
+  subscriptionEndDate: string
+  email: string
+  password: string
+  phone?: string | null
+  address?: string | null
+  notes?: string | null
+}
+
+export interface UpdateAgentDto {
+  name: string
+  complexId: string
+  subscriptionStartDate: string
+  subscriptionEndDate: string
+  email: string
+  password?: string | null
+  phone?: string | null
+  address?: string | null
+  notes?: string | null
+}
+
 export const ResidentStatus = {
   Active: 1,
   MovedOut: 2,
@@ -433,6 +473,7 @@ export type ContractType = (typeof ContractType)[keyof typeof ContractType]
 export const ContractPaymentType = {
   Cash: 1,
   RealEstateBank: 2,
+  CashInstallments: 3,
 } as const
 export type ContractPaymentType = (typeof ContractPaymentType)[keyof typeof ContractPaymentType]
 
@@ -443,13 +484,20 @@ export const PricingMode = {
 } as const
 export type PricingMode = (typeof PricingMode)[keyof typeof PricingMode]
 
-/** نطاق خطة الأسعار */
+/** نطاق خطة الأسعار (توافق قديم) */
 export const PricePlanScope = {
   Block: 1,
   Building: 2,
   Unit: 3,
 } as const
 export type PricePlanScope = (typeof PricePlanScope)[keyof typeof PricePlanScope]
+
+/** نوع تسعير خطة الأسعار */
+export const PricePlanPricingType = {
+  Amount: 1,
+  Percentage: 2,
+} as const
+export type PricePlanPricingType = (typeof PricePlanPricingType)[keyof typeof PricePlanPricingType]
 
 export const InstallmentStatus = {
   Pending: 1,
@@ -468,6 +516,13 @@ export const PaymentMethod = {
   Online: 5,
 } as const
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
+
+export const PaymentPurpose = {
+  Installment: 1,
+  DownPayment: 2,
+  Delivery: 3,
+} as const
+export type PaymentPurpose = (typeof PaymentPurpose)[keyof typeof PaymentPurpose]
 
 export const InvoiceStatus = {
   Draft: 1,
@@ -566,30 +621,60 @@ export interface CreateSalesContractDto {
 
 export type UpdateSalesContractDto = CreateSalesContractDto
 
+export interface PricePlanInstallmentItem {
+  index: number
+  dueDate?: string | null
+  amount: number
+  percent: number
+}
+
 export interface PricePlan {
   id: string
-  scope: PricePlanScope
+  name: string
+  scope?: PricePlanScope
   sellingPrice: number
+  downPayment: number
+  deliveryAmount: number
   discount: number
   tax: number
   registrationFee: number
+  pricingType: PricePlanPricingType
+  years: number | null
+  paymentIntervalMonths: number | null
+  firstInstallmentDate: string | null
+  installments?: PricePlanInstallmentItem[] | null
   complexId: string
-  blockId: string | null
+  blockId?: string | null
   buildingId: string | null
+  floorId?: string | null
+  floorIds?: string[] | null
+  unitUi?: UnitUi | null
+  unitUis?: UnitUi[] | null
+  applyToAllInLocation: boolean
   unitId: string | null
+  unitIds?: string[] | null
   createdAt: string
 }
 
 export interface CreatePricePlanDto {
-  scope: PricePlanScope
+  name: string
+  complexId: string
+  buildingId: string
+  floorIds: string[]
+  unitUis: UnitUi[]
+  applyToAllInLocation: boolean
+  unitIds: string[]
+  pricingType: PricePlanPricingType
   sellingPrice: number
+  downPayment: number
+  deliveryAmount: number
   discount: number
   tax: number
   registrationFee: number
-  complexId: string
-  blockId?: string | null
-  buildingId?: string | null
-  unitId?: string | null
+  years: number | null
+  paymentIntervalMonths: number | null
+  firstInstallmentDate: string | null
+  installments: PricePlanInstallmentItem[]
 }
 
 export type UpdatePricePlanDto = CreatePricePlanDto
@@ -639,6 +724,52 @@ export interface ContractDesignStyle {
   fontFamily?: string | null
 }
 
+/** 1 = يمين، 2 = يسار */
+export type ContractNumberSide = 1 | 2 | 'Right' | 'Left' | 'right' | 'left'
+
+export interface ClausePageGroup {
+  /** رقم الصفحة (الغلاف = 1) */
+  page: number
+  /** أول بند (1 = البند الأول) */
+  fromClause: number
+  /** آخر بند */
+  toClause: number
+}
+
+export interface ContractDesignLayout {
+  /** موضع رقم العقد: يمين أو يسار */
+  contractNumberSide?: ContractNumberSide | number | null
+  /** صفحة البداية (الأطراف). الغلاف = 1 */
+  startPage?: number | null
+  /** صفحة المقدمة */
+  introPage?: number | null
+  /** نص مقدمة العقد (متعدد الأسطر + متغيرات) */
+  introText?: string | null
+  introParcelNumber?: string | null
+  introRegistrationPlace?: string | null
+  introDistrict?: string | null
+  introInvestmentLicenseNo?: string | null
+  introInvestmentLicenseDate?: string | null
+  /** صفحة البنود الاحتياطية */
+  clausesPage?: number | null
+  /** توزيع البنود على الصفحات */
+  clauseGroups?: ClausePageGroup[] | null
+  /** صفحة ملحق العقد (بعد البنود) */
+  annexPage?: number | null
+  /** توافق قديم */
+  paymentTablePage?: number | null
+  /** اسم الطرف الأول (البائع) في التواقيع */
+  sellerSignName?: string | null
+  /** تسمية الطرف الثاني — الاسم الفعلي من العقد */
+  buyerSignTitle?: string | null
+}
+
+export interface ContractDesignAssets {
+  cornerUnitImagePath?: string | null
+  middleUnitImagePath?: string | null
+  complexExteriorImagePath?: string | null
+}
+
 export interface ContractDesign {
   id: string
   complexName: string | null
@@ -647,6 +778,9 @@ export interface ContractDesign {
   body: ContractDesignBody | null
   footer: ContractDesignFooter | null
   style: ContractDesignStyle | null
+  layout?: ContractDesignLayout | null
+  assets?: ContractDesignAssets | null
+  templatePath?: string | null
   createdAt: string
 }
 
@@ -657,6 +791,7 @@ export interface CreateContractDesignDto {
   body?: ContractDesignBody | null
   footer?: ContractDesignFooter | null
   style?: ContractDesignStyle | null
+  layout?: ContractDesignLayout | null
 }
 
 export type UpdateContractDesignDto = CreateContractDesignDto
@@ -724,6 +859,8 @@ export interface Payment {
   customerId: string
   receivedById: string
   complexId: string
+  purpose: PaymentPurpose
+  isPartialSplit: boolean
   createdAt: string
 }
 
@@ -737,9 +874,19 @@ export interface CreatePaymentDto {
   customerId: string
   receivedById: string
   complexId: string
+  purpose?: PaymentPurpose
+  splitPartial?: boolean
 }
 
 export type UpdatePaymentDto = CreatePaymentDto
+
+export interface ProcessPaymentResult {
+  payment: Payment
+  receipt: Receipt | null
+  paidInstallment: Installment | null
+  debtInstallment: Installment | null
+  wasPartialSplit: boolean
+}
 
 export interface Invoice {
   id: string

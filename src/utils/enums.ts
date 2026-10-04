@@ -10,6 +10,7 @@ import {
   ContractPaymentType,
   PricingMode,
   PricePlanScope,
+  PricePlanPricingType,
   InstallmentStatus,
   PaymentMethod,
   InvoiceStatus,
@@ -36,12 +37,12 @@ export const unitTypeOptions = [
 ]
 
 export const unitUiOptions = [
-  { value: UnitUi.MiddleFront, label: 'وسط أمامي' },
-  { value: UnitUi.MiddleBack, label: 'وسط خلفي' },
-  { value: UnitUi.CornerFrontRight, label: 'زاوية أمامية يمين' },
-  { value: UnitUi.CornerFrontLeft, label: 'زاوية أمامية يسار' },
-  { value: UnitUi.CornerBackRight, label: 'زاوية خلفية يمين' },
-  { value: UnitUi.CornerBackLeft, label: 'زاوية خلفية يسار' },
+  { value: UnitUi.CornerFrontRight, label: 'طرفي يمين أمامي' },
+  { value: UnitUi.CornerFrontLeft, label: 'طرفي يسار أمامي' },
+  { value: UnitUi.CornerBackRight, label: 'طرفي يمين خلفي' },
+  { value: UnitUi.CornerBackLeft, label: 'طرفي يسار خلفي' },
+  { value: UnitUi.MiddleFront, label: 'وسطي أمامي' },
+  { value: UnitUi.MiddleBack, label: 'وسطي خلفي' },
 ]
 
 export const maritalStatusOptions = [
@@ -100,6 +101,7 @@ export const contractTypeOptions = [
 
 export const contractPaymentTypeOptions = [
   { value: ContractPaymentType.Cash, label: 'كاش' },
+  { value: ContractPaymentType.CashInstallments, label: 'كاش الأقساط' },
   { value: ContractPaymentType.RealEstateBank, label: 'مصرف عقاري' },
 ]
 
@@ -112,6 +114,11 @@ export const pricePlanScopeOptions = [
   { value: PricePlanScope.Block, label: 'بلوك' },
   { value: PricePlanScope.Building, label: 'بناية' },
   { value: PricePlanScope.Unit, label: 'وحدة' },
+]
+
+export const pricePlanPricingTypeOptions = [
+  { value: PricePlanPricingType.Amount, label: 'رقمي' },
+  { value: PricePlanPricingType.Percentage, label: 'نسبة' },
 ]
 
 export const logoPositionOptions = [
@@ -245,6 +252,20 @@ export function translateMessage(message: string): string {
   const map: Record<string, string> = {
     'Invalid email or password.': 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
     'Invalid email or password': 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    'Subscription expired. Please contact the administrator.':
+      'انتهى الاشتراك. يرجى التواصل مع مدير النظام.',
+    'Subscription has not started yet. Please contact the administrator.':
+      'لم يبدأ الاشتراك بعد. يرجى التواصل مع مدير النظام.',
+    'Password must be at least 8 characters and include letters and numbers.':
+      'كلمة السر يجب أن تكون 8 أحرف على الأقل وتحتوي حروفاً وأرقاماً.',
+    'Email is already in use.': 'البريد الإلكتروني مستخدم مسبقاً.',
+    'Complex not found.': 'المجمع غير موجود.',
+    'Agent not found.': 'مدير المجمع غير موجود.',
+    'Name is required.': 'الاسم مطلوب.',
+    'Complex is required.': 'المجمع مطلوب.',
+    'Email is required.': 'البريد الإلكتروني مطلوب.',
+    'Subscription end date must be on or after the start date.':
+      'تاريخ انتهاء الاشتراك يجب أن يكون بعد أو يساوي تاريخ البداية.',
     Unauthorized: 'غير مصرح. يرجى تسجيل الدخول مجدداً.',
     Forbidden: 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
     'Not Found': 'العنصر غير موجود.',

@@ -13,11 +13,13 @@ import { getErrorMessage } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { asSelectOptions } from '@/utils/enums'
+import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
+const auth = useAuthStore()
 const notify = useNotify()
 const { ask } = useConfirmAction()
 const buildings = ref<Building[]>([])
@@ -105,7 +107,7 @@ onMounted(async () => {
 <template>
   <div class="page">
     <PageHeader title="الطوابق" subtitle="تنظيم طوابق المباني السكنية">
-      <template #actions>
+      <template v-if="auth.isSuperAdmin" #actions>
         <Button label="إضافة طابق" icon="pi pi-plus" @click="openCreate" />
       </template>
     </PageHeader>

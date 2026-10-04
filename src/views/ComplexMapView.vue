@@ -34,6 +34,11 @@ import Complex3DViewer from '@/components/complex3d/Complex3DViewer.vue'
 const notify = useNotify()
 const router = useRouter()
 
+/** حالات خريطة المجمع فقط — بدون مؤجر وصيانة */
+const mapUnitStatusOptions = unitStatusOptions.filter(
+  (opt) => opt.value !== UnitStatus.Rented && opt.value !== UnitStatus.Maintenance,
+)
+
 const complexes = ref<Complex[]>([])
 const selectedComplexId = ref<string | null>(null)
 const loadingComplexes = ref(false)
@@ -466,7 +471,7 @@ onMounted(async () => {
           />
           <Select
             v-model="statusFilter"
-            :options="unitStatusOptions"
+            :options="mapUnitStatusOptions"
             option-label="label"
             option-value="value"
             placeholder="كل الحالات"
@@ -496,7 +501,7 @@ onMounted(async () => {
       </div>
       <div class="legend">
         <span
-          v-for="opt in unitStatusOptions"
+          v-for="opt in mapUnitStatusOptions"
           :key="`status-${opt.value}`"
           class="legend__item"
           :class="statusClass(opt.value)"
@@ -796,7 +801,7 @@ onMounted(async () => {
           <label>حالة الوحدة</label>
           <Select
             v-model="selectedUnitStatus"
-            :options="unitStatusOptions"
+            :options="mapUnitStatusOptions"
             option-label="label"
             option-value="value"
             placeholder="اختر الحالة"

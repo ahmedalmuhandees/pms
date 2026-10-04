@@ -31,18 +31,25 @@ const router = createRouter({
           path: 'complexes',
           name: 'complexes',
           component: () => import('@/views/ComplexesView.vue'),
+          meta: { adminOnly: true },
+        },
+        {
+          path: 'agents',
+          name: 'agents',
+          component: () => import('@/views/AgentsView.vue'),
+          meta: { adminOnly: true },
         },
         {
           path: 'complex-builder',
           name: 'complex-builder',
           component: () => import('@/views/ComplexBuilderView.vue'),
-          meta: { builderLayout: 'vertical' },
+          meta: { builderLayout: 'vertical', adminOnly: true },
         },
         {
           path: 'horizontal-builder',
           name: 'horizontal-builder',
           component: () => import('@/views/ComplexBuilderView.vue'),
-          meta: { builderLayout: 'horizontal' },
+          meta: { builderLayout: 'horizontal', adminOnly: true },
         },
         {
           path: 'complex-map',
@@ -113,6 +120,7 @@ const router = createRouter({
           path: 'users',
           name: 'users',
           component: () => import('@/views/UsersView.vue'),
+          meta: { adminOnly: true },
         },
         {
           path: 'reservations',
@@ -140,29 +148,9 @@ const router = createRouter({
           component: () => import('@/views/ContractDesignsView.vue'),
         },
         {
-          path: 'installment-plans',
-          name: 'installment-plans',
-          component: () => import('@/views/InstallmentPlansView.vue'),
-        },
-        {
           path: 'installments',
           name: 'installments',
           component: () => import('@/views/InstallmentsView.vue'),
-        },
-        {
-          path: 'payments',
-          name: 'payments',
-          component: () => import('@/views/PaymentsView.vue'),
-        },
-        {
-          path: 'invoices',
-          name: 'invoices',
-          component: () => import('@/views/InvoicesView.vue'),
-        },
-        {
-          path: 'invoice-details',
-          name: 'invoice-details',
-          component: () => import('@/views/InvoiceDetailsView.vue'),
         },
         {
           path: 'receipts',
@@ -181,6 +169,12 @@ router.beforeEach((to) => {
     return true
   }
   if (!auth.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } }
+
+  const needsAdmin = to.matched.some((record) => record.meta.adminOnly)
+  if (needsAdmin && !auth.isSuperAdmin) {
+    return { name: 'dashboard' }
+  }
+
   return true
 })
 

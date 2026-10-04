@@ -5,6 +5,7 @@ import type {
   Payment,
   PagedResult,
   PaginationParams,
+  ProcessPaymentResult,
   UpdatePaymentDto,
 } from '@/types'
 
@@ -31,6 +32,16 @@ export async function getPayment(id: string) {
 export async function createPayment(payload: CreatePaymentDto) {
   const res = await apiClient.post<ApiResponse<Payment>>('/api/Payments', payload)
   return unwrap(res)
+}
+
+export async function processPayment(payload: CreatePaymentDto) {
+  const res = await apiClient.post<ApiResponse<ProcessPaymentResult>>('/api/Payments/process', payload)
+  return unwrap(res)
+}
+
+export async function downloadPaymentPdf(id: string) {
+  const res = await apiClient.get(`/api/Payments/${id}/pdf`, { responseType: 'blob' })
+  return res.data as Blob
 }
 
 export async function updatePayment(id: string, payload: UpdatePaymentDto) {

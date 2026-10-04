@@ -14,7 +14,7 @@ const router = useRouter()
 
 
 
-type MenuItem = { path: string; label: string; icon: string }
+type MenuItem = { path: string; label: string; icon: string; adminOnly?: boolean }
 type MenuGroup = {
   key: string
   label: string | null
@@ -22,7 +22,15 @@ type MenuGroup = {
   items: MenuItem[]
 }
 
-const menuGroups: MenuGroup[] = [
+const ADMIN_ONLY_PATHS = new Set([
+  '/complexes',
+  '/agents',
+  '/users',
+  '/complex-builder',
+  '/horizontal-builder',
+])
+
+const allMenuGroups: MenuGroup[] = [
   {
     key: 'dashboard',
     label: null,
@@ -34,9 +42,10 @@ const menuGroups: MenuGroup[] = [
     label: 'الهيكل العقاري',
     collapsible: true,
     items: [
-      { path: '/complexes', label: 'المجمعات', icon: 'pi pi-building' },
-      { path: '/complex-builder', label: 'هيكل عمودي', icon: 'pi pi-building' },
-      { path: '/horizontal-builder', label: 'هيكل أفقي', icon: 'pi pi-home' },
+      { path: '/complexes', label: 'المجمعات', icon: 'pi pi-building', adminOnly: true },
+      { path: '/agents', label: 'مدراء المجمعات', icon: 'pi pi-briefcase', adminOnly: true },
+      { path: '/complex-builder', label: 'هيكل عمودي', icon: 'pi pi-building', adminOnly: true },
+      { path: '/horizontal-builder', label: 'هيكل أفقي', icon: 'pi pi-home', adminOnly: true },
       { path: '/complex-map', label: 'خريطة المجمع', icon: 'pi pi-map' },
       { path: '/blocks', label: 'البلوكات', icon: 'pi pi-th-large' },
       { path: '/buildings', label: 'المباني', icon: 'pi pi-home' },
@@ -55,7 +64,7 @@ const menuGroups: MenuGroup[] = [
       { path: '/technicians', label: 'الفنيون', icon: 'pi pi-wrench' },
       { path: '/vehicles', label: 'المركبات', icon: 'pi pi-car' },
       { path: '/visitors', label: 'الزوار', icon: 'pi pi-envelope' },
-      { path: '/users', label: 'المستخدمون', icon: 'pi pi-user' },
+      { path: '/users', label: 'المستخدمون', icon: 'pi pi-user', adminOnly: true },
     ],
   },
   {
@@ -67,20 +76,26 @@ const menuGroups: MenuGroup[] = [
       { path: '/price-plans', label: 'خطط الأسعار', icon: 'pi pi-tag' },
       { path: '/contract-clauses', label: 'بنود العقد', icon: 'pi pi-align-left' },
       { path: '/contract-designs', label: 'تصاميم العقود', icon: 'pi pi-palette' },
-      { path: '/installment-plans', label: 'خطط التقسيط', icon: 'pi pi-calendar' },
       { path: '/installments', label: 'الأقساط', icon: 'pi pi-list' },
       { path: '/reservations', label: 'الحجوزات', icon: 'pi pi-bookmark' },
-      { path: '/payments', label: 'المدفوعات', icon: 'pi pi-wallet' },
-      { path: '/invoices', label: 'الفواتير', icon: 'pi pi-book' },
-      { path: '/invoice-details', label: 'تفاصيل الفاتورة', icon: 'pi pi-table' },
       { path: '/receipts', label: 'الوصولات', icon: 'pi pi-money-bill' },
     ],
   },
 ]
 
+const menuGroups = computed(() => {
+  const isAdmin = auth.isSuperAdmin
+  return allMenuGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => isAdmin || (!item.adminOnly && !ADMIN_ONLY_PATHS.has(item.path))),
+    }))
+    .filter((group) => group.items.length > 0)
+})
+
 function loadOpenState(): Record<string, boolean> {
   const defaults: Record<string, boolean> = {}
-  for (const group of menuGroups) {
+  for (const group of allMenuGroups) {
     if (group.collapsible) defaults[group.key] = true
   }
   try {
@@ -119,7 +134,7 @@ function toggleGroup(group: MenuGroup) {
 watch(
   () => route.path,
   () => {
-    for (const group of menuGroups) {
+    for (const group of menuGroups.value) {
       if (group.collapsible && groupHasActive(group)) {
         openGroups[group.key] = true
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...openGroups }))

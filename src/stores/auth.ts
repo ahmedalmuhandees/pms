@@ -21,6 +21,10 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<UserInfo | null>(loadUser())
 
   const isAuthenticated = computed(() => Boolean(token.value))
+  const isSuperAdmin = computed(() => Boolean(user.value?.isSuperAdmin))
+  const isComplexManager = computed(
+    () => !isSuperAdmin.value && (user.value?.role === 'ComplexManager' || Boolean(user.value?.complexId)),
+  )
   const displayName = computed(() => {
     if (!user.value) return ''
     const name = [user.value.firstName, user.value.lastName].filter(Boolean).join(' ')
@@ -46,6 +50,8 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     user,
     isAuthenticated,
+    isSuperAdmin,
+    isComplexManager,
     displayName,
     login,
     logout,

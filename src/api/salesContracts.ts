@@ -14,7 +14,6 @@ export interface SalesContractParams extends PaginationParams {
   UnitId?: string
   SalesAgentId?: string
   ContractStatus?: string | number
-  ContractType?: string | number
   ContractPaymentType?: string | number
 }
 
@@ -41,4 +40,11 @@ export async function updateSalesContract(id: string, payload: UpdateSalesContra
 export async function deleteSalesContract(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/SalesContracts/${id}`)
   return unwrap(res)
+}
+
+export async function downloadSalesContractPdf(id: string) {
+  const res = await apiClient.get(`/api/SalesContracts/${id}/pdf`, {
+    responseType: 'blob',
+  })
+  return res.data as Blob
 }

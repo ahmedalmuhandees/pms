@@ -22,6 +22,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+      '/uploads': {
+        target: 'https://pmsaas-api.execute-iq.com',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
 })

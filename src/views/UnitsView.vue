@@ -24,11 +24,13 @@ import {
   unitTypeOptions,
   unitUiOptions,
 } from '@/utils/enums'
+import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
+const auth = useAuthStore()
 const router = useRouter()
 const notify = useNotify()
 const { ask } = useConfirmAction()
@@ -184,7 +186,7 @@ onMounted(async () => {
 <template>
   <div class="page">
     <PageHeader title="الوحدات" subtitle="إدارة وحدات المجمعات وحالاتها وأنواعها">
-      <template #actions>
+      <template v-if="auth.isSuperAdmin" #actions>
         <Button label="إضافة وحدة" icon="pi pi-plus" @click="openCreate" />
       </template>
     </PageHeader>

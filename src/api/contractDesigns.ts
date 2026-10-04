@@ -38,3 +38,41 @@ export async function deleteContractDesign(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/ContractDesigns/${id}`)
   return unwrap(res)
 }
+
+export async function uploadContractDesignLogo(id: string, file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await apiClient.post<ApiResponse<ContractDesign>>(
+    `/api/ContractDesigns/${id}/logo`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return unwrap(res)
+}
+
+export async function uploadContractDesignTemplate(id: string, file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await apiClient.post<ApiResponse<ContractDesign>>(
+    `/api/ContractDesigns/${id}/template`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return unwrap(res)
+}
+
+/** kind: corner | middle | exterior */
+export async function uploadContractDesignAsset(
+  id: string,
+  kind: 'corner' | 'middle' | 'exterior',
+  file: File,
+) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await apiClient.post<ApiResponse<ContractDesign>>(
+    `/api/ContractDesigns/${id}/assets/${kind}`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return unwrap(res)
+}

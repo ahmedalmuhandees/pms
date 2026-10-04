@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ProgressBar from 'primevue/progressbar'
 import type { Complex } from '@/types'
@@ -24,9 +25,11 @@ import {
   horizontalStreetSlots,
   horizontalUnitNumber,
   MAX_UNITS_PER_FLOOR,
+  resolveBuildingCode,
   resolveHorizontalIndexOrder,
   resolveVerticalIndexOrder,
   SEQUENCE_DIRECTION_OPTIONS,
+  syncBuildingNames,
   unitNumber,
   verticalFloorCells,
   type StructureConfig,
@@ -56,6 +59,7 @@ const structure = reactive<StructureConfig>({
   layoutMode: 'vertical',
   blocksCount: 2,
   buildingsPerBlock: 2,
+  buildingNames: ['A', 'B'],
   floorsPerBuilding: 4,
   unitsPerFloor: 6,
   startFloor: 1,
@@ -75,6 +79,15 @@ const structure = reactive<StructureConfig>({
   sequenceStartUi: UnitUi.MiddleFront,
   sequenceDirection: 'manual',
   sequenceOrder: [],
+})
+
+const sampleBuildingCode = computed(() =>
+  resolveBuildingCode(structure.buildingNames, 0),
+)
+
+const sampleUnitLabel = computed(() => {
+  if (isHorizontal.value) return sampleBuildingCode.value
+  return `${sampleBuildingCode.value}-${structure.startFloor || 1}-1`
 })
 
 const complexOptions = computed(() =>
@@ -232,7 +245,11 @@ const streetHouses = computed(() => {
             : 'وسط',
     sequence: order.indexOf(index) + 1,
     picked: structure.horizontalPickedIndices.includes(index),
-    unitNumber: horizontalUnitNumber(structure.blockIndexOffset || 0, order.indexOf(index)),
+    unitNumber: horizontalUnitNumber(
+      structure.blockIndexOffset || 0,
+      order.indexOf(index),
+      resolveBuildingCode(structure.buildingNames, index),
+    ),
   }))
 })
 
@@ -243,6 +260,7 @@ const floorCells = computed(() => {
     structure.sequenceDirection,
     structure.verticalPickedIndices,
   )
+  const code = resolveBuildingCode(structure.buildingNames, 0)
   return cells.map((cell) => ({
     ...cell,
     area: structure.rowAreas[cell.index] ?? structure.area,
@@ -253,6 +271,7 @@ const floorCells = computed(() => {
       0,
       floorSampleNumber.value,
       order.indexOf(cell.index) + 1,
+      code,
     ),
   }))
 })
@@ -289,12 +308,20 @@ function onSequenceDirectionChange(value: StructureConfig['sequenceDirection']) 
   }
 }
 
+function syncBuildingNameFields() {
+  structure.buildingNames = syncBuildingNames(
+    structure.buildingNames,
+    structure.buildingsPerBlock,
+  )
+}
+
 function syncHorizontalStreet() {
   structure.floorsPerBuilding = 1
   structure.unitsPerFloor = 1
   structure.startFloor = 1
   const n = Math.max(1, Math.min(40, structure.buildingsPerBlock || 1))
   structure.buildingsPerBlock = n
+  syncBuildingNameFields()
   structure.countByUi = countsFromSlots(horizontalStreetSlots(n))
   structure.rowAreas = Array.from(
     { length: n },
@@ -304,6 +331,7 @@ function syncHorizontalStreet() {
 
 function onVillasPerBlockChange(value: number | null) {
   structure.buildingsPerBlock = Math.max(1, Math.min(40, value || 1))
+  syncBuildingNameFields()
   if (!isHorizontal.value) return
   structure.horizontalPickedIndices = []
   syncHorizontalStreet()
@@ -437,7 +465,22 @@ function validateStep2() {
       notify.warning('أرقام الهيكل يجب أن تكون 1 على الأقل')
       return false
     }
+    syncBuildingNameFields()
   }
+
+  const names = syncBuildingNames(structure.buildingNames, structure.buildingsPerBlock)
+  structure.buildingNames = names
+  const emptyName = names.some((n) => !n?.trim())
+  if (emptyName) {
+    notify.warning(isHorizontal.value ? 'أدخل اسم/رمز كل فيلا' : 'أدخل اسم/رمز كل مبنى')
+    return false
+  }
+  const normalized = names.map((n) => n.trim().toLowerCase())
+  if (new Set(normalized).size !== normalized.length) {
+    notify.warning('أسماء المباني يجب أن تكون مختلفة')
+    return false
+  }
+
   if (preview.value.totals.units > 800) {
     notify.warning('عدد الوحدات كبير جداً (الحد 800). قلّل الأرقام.')
     return false
@@ -645,6 +688,7 @@ function applyLayoutDefaults(horizontal: boolean) {
     structure.parkingCount = 1
     structure.areaByUi = defaultAreaByUi(120)
     structure.rowAreas = Array.from({ length: 6 }, () => 120)
+    syncBuildingNameFields()
     syncVerticalFloor()
   }
 }
@@ -731,14 +775,13 @@ onMounted(() => {
       <h3 class="panel__title">{{ isHorizontal ? 'هيكل الصف والتسمية التلقائية' : 'هيكل البناء والتسمية التلقائية' }}</h3>
       <p class="panel__hint">
         <template v-if="isHorizontal">
-          التسمية: بلوك أ / فيلا 1 / وحدة
-          <strong>A1</strong>
-          — الرقم هو تسلسل الفيلا داخل البلوك (يُضبط في الخطوة التالية)
+          التسمية: اسم الفيلا يصبح رقم الوحدة — مثال
+          <strong>{{ sampleUnitLabel }}</strong>
         </template>
         <template v-else>
-          التسمية: بلوك أ / مبنى 1 / طابق 1 / وحدة
-          <strong>A1-1-1</strong>
-          — الرقم الأخير هو تسلسل الوحدة داخل الطابق (يُضبط في الخطوة التالية)
+          التسمية: اسم المبنى كبادئة للوحدات — مثال
+          <strong>{{ sampleUnitLabel }}</strong>
+          (مبنى - طابق - تسلسل)
         </template>
         <template v-if="structure.blockIndexOffset">
           — ستبدأ من بعد {{ structure.blockIndexOffset }} بلوك موجود
@@ -758,6 +801,25 @@ onMounted(() => {
             show-buttons
             @update:model-value="onVillasPerBlockChange"
           />
+        </div>
+        <div class="field full building-names">
+          <label>{{ isHorizontal ? 'أسماء / رموز الفلل' : 'أسماء / رموز المباني' }}</label>
+          <small class="field-hint">
+            أدخل حرفاً أو كلمة لكل {{ isHorizontal ? 'فيلا' : 'مبنى' }} — كل الوحدات التابعة تبدأ بهذا الاسم (مثال: C → C-1-1)
+          </small>
+          <div class="building-names__grid">
+            <div
+              v-for="(_, index) in structure.buildingNames"
+              :key="index"
+              class="building-names__item"
+            >
+              <label>{{ isHorizontal ? 'فيلا' : 'مبنى' }} {{ index + 1 }}</label>
+              <InputText
+                v-model="structure.buildingNames[index]"
+                :placeholder="isHorizontal ? 'مثال: V1' : 'مثال: C'"
+              />
+            </div>
+          </div>
         </div>
         <div v-if="!isHorizontal" class="field">
           <label>طوابق لكل مبنى</label>
@@ -2045,6 +2107,37 @@ onMounted(() => {
 
 .nav__spacer {
   flex: 1;
+}
+
+.field.full {
+  grid-column: 1 / -1;
+}
+
+.building-names__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.building-names__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.building-names__item label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 900px) {

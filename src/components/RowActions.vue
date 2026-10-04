@@ -2,6 +2,7 @@
 defineProps<{
   showDetails?: boolean
   showPrint?: boolean
+  showPdf?: boolean
 }>()
 
 defineEmits<{
@@ -9,6 +10,7 @@ defineEmits<{
   remove: []
   details: []
   print: []
+  pdf: []
 }>()
 </script>
 
@@ -23,6 +25,16 @@ defineEmits<{
       @click="$emit('details')"
     >
       <i class="pi pi-eye" />
+    </button>
+    <button
+      v-if="showPdf"
+      type="button"
+      class="action-btn is-print"
+      v-tooltip.top="'تحميل PDF'"
+      aria-label="تحميل PDF"
+      @click="$emit('pdf')"
+    >
+      <i class="pi pi-file-pdf" />
     </button>
     <button
       v-if="showPrint"
