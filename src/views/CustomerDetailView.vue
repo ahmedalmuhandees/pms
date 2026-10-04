@@ -26,7 +26,7 @@ import type {
   SalesContract,
   Unit,
 } from '@/types'
-import { InstallmentStatus, PaymentMethod, PaymentPurpose } from '@/types'
+import { PaymentMethod, PaymentPurpose } from '@/types'
 import { getCustomer } from '@/api/customers'
 import { getComplexes } from '@/api/complexes'
 import { getSalesContract, getSalesContracts } from '@/api/salesContracts'

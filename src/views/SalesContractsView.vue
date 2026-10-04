@@ -125,7 +125,7 @@ const contractByUnitId = computed(() => {
     if (!contract.unitId || map.has(contract.unitId)) continue
     if (
       contract.contractStatus === ContractStatus.Cancelled ||
-      contract.contractStatus === ContractStatus.Terminated
+      contract.contractStatus === ContractStatus.Suspended
     ) {
       continue
     }
@@ -1033,7 +1033,7 @@ onMounted(async () => {
           outlined
           @click="clearBuildingFilter"
         />
-        <Button label="إضافة عقد" icon="pi pi-plus" @click="openCreate" />
+        <Button label="إضافة عقد" icon="pi pi-plus" @click="() => openCreate()" />
       </template>
     </PageHeader>
 

@@ -46,7 +46,7 @@ const contracts = ref<SalesContract[]>([])
 const statsLoading = ref(false)
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter,
+  items, loading, pageSize, total, search, load, onSearch, setFilter,
 } = usePagedList<Building, BuildingParams>(getBuildings)
 
 pageSize.value = 100
@@ -101,7 +101,7 @@ const soldUnitIds = computed(() => {
     if (contract.contractType !== ContractType.Sale) continue
     if (
       contract.contractStatus === ContractStatus.Cancelled ||
-      contract.contractStatus === ContractStatus.Terminated
+      contract.contractStatus === ContractStatus.Suspended
     ) {
       continue
     }
