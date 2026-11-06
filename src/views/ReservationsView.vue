@@ -4,6 +4,7 @@ import Button from 'primevue/button'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
+import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -31,8 +32,12 @@ import {
 } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
@@ -44,13 +49,17 @@ const customerMap = ref<Record<string, string>>({})
 const unitMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Reservation, ReservationParams>(getReservations)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const statusFilter = ref<number | null>(null)
 const reservationDateModel = ref<Date | null>(null)
 const expireDateModel = ref<Date | null>(null)
@@ -63,6 +72,7 @@ const form = reactive<CreateReservationDto>({
   unitId: '',
   customerId: '',
   complexId: '',
+  notes: '',
 })
 
 const filteredUnits = computed(() =>
@@ -112,7 +122,8 @@ function openCreate() {
     status: ReservationStatus.Pending,
     unitId: '',
     customerId: '',
-    complexId: complexFilter.value || complexes.value[0]?.id || '',
+    complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
+    notes: '',
   })
   dialogVisible.value = true
 }
@@ -129,6 +140,7 @@ function openEdit(row: Reservation) {
     unitId: row.unitId,
     customerId: row.customerId,
     complexId: row.complexId,
+    notes: row.notes ?? '',
   })
   dialogVisible.value = true
 }
@@ -192,9 +204,12 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -216,8 +231,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="7" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -229,26 +245,31 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column header="تاريخ الحجز" style="width: 120px">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column header="تاريخ الحجز" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatDate(data.reservationDate) }}</template>
         </Column>
-        <Column header="المبلغ" style="width: 120px">
+        <Column header="المبلغ" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatMoney(data.reservationAmount) }}</template>
         </Column>
-        <Column header="الانتهاء" style="width: 120px">
+        <Column header="الانتهاء" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatDate(data.expireDate) }}</template>
         </Column>
-        <Column header="الحالة" style="width: 110px">
+        <Column header="الحالة" style="width: 110px" sortable>
           <template #body="{ data }">{{ labelOf(reservationStatusOptions, data.status) }}</template>
         </Column>
-        <Column header="العميل">
+        <Column header="العميل" sortable>
           <template #body="{ data }">{{ customerMap[data.customerId] || data.customerId.slice(0, 8) }}</template>
         </Column>
-        <Column header="الوحدة" style="width: 100px">
+        <Column header="الوحدة" style="width: 100px" sortable>
           <template #body="{ data }">{{ unitMap[data.unitId] || data.unitId.slice(0, 8) }}</template>
         </Column>
-        <Column header="المجمع">
+        <Column header="المجمع" sortable>
           <template #body="{ data }">{{ complexMap[data.complexId] || '—' }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -258,6 +279,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -270,6 +292,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"
@@ -329,6 +352,10 @@ onMounted(async () => {
         <div class="field">
           <label>مبلغ الحجز</label>
           <InputNumber v-model="form.reservationAmount" :min="0" />
+        </div>
+        <div class="field full">
+          <label>الملاحظات</label>
+          <Textarea v-model="form.notes" rows="3" placeholder="أضف ملاحظات الحجز (اختياري)" auto-resize />
         </div>
       </div>
       <template #footer>

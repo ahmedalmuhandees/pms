@@ -1,14 +1,22 @@
-import { ref, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import type { PagedResult, PaginationParams } from '@/types'
 import { getErrorMessage } from '@/api/client'
 import { useNotify } from '@/composables/useNotify'
+import { useAuthStore } from '@/stores/auth'
+import {
+  nextTableSortMode,
+  paramsToTableSort,
+  tableSortModeLabel,
+  tableSortOrder,
+  tableSortToParams,
+  type TableSortMode,
+} from '@/utils/tableSort'
 
 export function usePagedList<T, P extends PaginationParams = PaginationParams>(
   fetcher: (params?: P) => Promise<PagedResult<T>>,
   initialFilters: Partial<P> = {},
 ) {
-
-  
+  const auth = useAuthStore()
   const notify = useNotify()
   const items = ref<T[]>([]) as Ref<T[]>
   const loading = ref(true)
@@ -16,13 +24,35 @@ export function usePagedList<T, P extends PaginationParams = PaginationParams>(
   const pageSize = ref(10)
   const total = ref(0)
   const search = ref('')
-  const filters = ref({ ...initialFilters }) as Ref<Partial<P>>
+
+  const defaultSort = tableSortToParams('latest')
+  const scoped = auth.scopedComplexId
+  const seededFilters = {
+    SortBy: defaultSort.SortBy,
+    SortDirection: defaultSort.SortDirection,
+    ...initialFilters,
+    ...(scoped ? ({ ComplexId: scoped } as unknown as Partial<P>) : {}),
+  }
+  const filters = ref({ ...seededFilters }) as Ref<Partial<P>>
+  const sortMode = ref<TableSortMode>(
+    paramsToTableSort(
+      (seededFilters as PaginationParams).SortBy,
+      (seededFilters as PaginationParams).SortDirection,
+    ),
+  )
+
+  /** حقل وهمي لأيقونة الفرز في رؤوس الأعمدة */
+  const sortField = ref('createdAt')
+  const sortOrder = computed(() => tableSortOrder(sortMode.value))
+  const sortModeLabel = computed(() => tableSortModeLabel(sortMode.value))
 
   async function load() {
     loading.value = true
     try {
+      const complexId = auth.scopedComplexId
       const params = {
         ...filters.value,
+        ...(complexId ? { ComplexId: complexId } : {}),
         Page: page.value,
         PageSize: pageSize.value,
         Search: search.value || undefined,
@@ -58,6 +88,12 @@ export function usePagedList<T, P extends PaginationParams = PaginationParams>(
   }
 
   function setFilter<K extends keyof P>(key: K, value: P[K] | undefined) {
+    if (String(key) === 'ComplexId' && auth.scopedComplexId) {
+      filters.value = { ...filters.value, [key]: auth.scopedComplexId as P[K] }
+      page.value = 1
+      void load()
+      return
+    }
     if (value === undefined || value === null || value === '') {
       const next = { ...filters.value }
       delete next[key]
@@ -67,6 +103,23 @@ export function usePagedList<T, P extends PaginationParams = PaginationParams>(
     }
     page.value = 1
     void load()
+  }
+
+  function setSortMode(mode: TableSortMode) {
+    sortMode.value = mode
+    const p = tableSortToParams(mode)
+    filters.value = {
+      ...filters.value,
+      SortBy: p.SortBy,
+      SortDirection: p.SortDirection,
+    } as Partial<P>
+    page.value = 1
+    void load()
+  }
+
+  /** نقر رأس عمود في الجدول → تبديل بين آخر إضافة / تسلسلي / عكسي */
+  function onTableSort() {
+    setSortMode(nextTableSortMode(sortMode.value))
   }
 
   function onLazyPage(event: { page: number; rows: number }) {
@@ -83,11 +136,17 @@ export function usePagedList<T, P extends PaginationParams = PaginationParams>(
     total,
     search,
     filters,
+    sortMode,
+    sortField,
+    sortOrder,
+    sortModeLabel,
     load,
     onPageChange,
     onSizeChange,
     onSearch,
     setFilter,
+    setSortMode,
+    onTableSort,
     onLazyPage,
   }
 }

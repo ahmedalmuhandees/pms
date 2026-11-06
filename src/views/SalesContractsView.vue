@@ -2,16 +2,20 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
+import RememberedInput from '@/components/RememberedInput.vue'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
+import ToggleSwitch from 'primevue/toggleswitch'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type {
   Building,
   Complex,
+  ContractDesign,
+  ContractDownPaymentScheduleItem,
   CreateSalesContractDto,
   Customer,
   Employee,
@@ -27,6 +31,7 @@ import {
   ContractPaymentType,
   ContractStatus,
   ContractType,
+  InstallmentStatus,
   PricePlanPricingType,
   PricingMode,
   UnitStatus,
@@ -41,6 +46,7 @@ import {
   type SalesContractParams,
 } from '@/api/salesContracts'
 import { getPricePlans } from '@/api/pricePlans'
+import { getContractDesigns } from '@/api/contractDesigns'
 import { getComplexes } from '@/api/complexes'
 import { getCustomers } from '@/api/customers'
 import { getBuildings } from '@/api/buildings'
@@ -62,6 +68,12 @@ import {
   pricingModeOptions,
   unitStatusOptions,
 } from '@/utils/enums'
+import {
+  compareContractNumbers,
+  compareUnitNumbers,
+  normalizeUnitSearch,
+  unitSearchMatches,
+} from '@/utils/unitSearch'
 
 interface SalesTableRow {
   key: string
@@ -77,8 +89,12 @@ interface SalesTableRow {
 }
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
@@ -91,6 +107,7 @@ const buildings = ref<Building[]>([])
 const floors = ref<Floor[]>([])
 const employees = ref<Employee[]>([])
 const pricePlans = ref<PricePlan[]>([])
+const contractDesigns = ref<ContractDesign[]>([])
 const allContracts = ref<SalesContract[]>([])
 const complexMap = ref<Record<string, string>>({})
 const customerMap = ref<Record<string, string>>({})
@@ -107,6 +124,25 @@ const buildingNameFilter = computed(() => {
   const value = route.query.buildingName
   return typeof value === 'string' && value ? value : null
 })
+const blockIdFilter = computed(() => {
+  const value = route.query.blockId
+  return typeof value === 'string' && value ? value : null
+})
+const blockNameFilter = computed(() => {
+  const value = route.query.blockName
+  return typeof value === 'string' && value ? value : null
+})
+const scopeFilterActive = computed(() => !!(buildingIdFilter.value || blockIdFilter.value))
+const scopeFilterLabel = computed(() => {
+  if (blockIdFilter.value) {
+    return blockNameFilter.value || blockIdFilter.value.slice(0, 8)
+  }
+  if (buildingIdFilter.value) {
+    return buildingNameFilter.value || buildingIdFilter.value.slice(0, 8)
+  }
+  return ''
+})
+const scopeFilterKindLabel = computed(() => (blockIdFilter.value ? 'البلوك' : 'المبنى'))
 
 const floorToBuilding = computed(() => {
   const map: Record<string, string> = {}
@@ -118,9 +154,12 @@ const unitById = computed(() => Object.fromEntries(units.value.map((u) => [u.id,
 
 const contractByUnitId = computed(() => {
   const map = new Map<string, SalesContract>()
-  const sorted = [...allContracts.value, ...items.value].sort(
-    (a, b) => new Date(b.createdAt || b.contractDate).getTime() - new Date(a.createdAt || a.contractDate).getTime(),
-  )
+  // items أولاً ثم allContracts — وعند التعارض نفضّل الأحدث بـ updatedAt
+  const sorted = [...items.value, ...allContracts.value].sort((a, b) => {
+    const tb = new Date(b.updatedAt || b.createdAt || b.contractDate).getTime()
+    const ta = new Date(a.updatedAt || a.createdAt || a.contractDate).getTime()
+    return tb - ta
+  })
   for (const contract of sorted) {
     if (!contract.unitId || map.has(contract.unitId)) continue
     if (
@@ -157,6 +196,31 @@ async function resolveBuildingUnitIds(buildingId: string) {
   return new Set(units.value.filter((u) => floorIds.has(u.floorId)).map((u) => u.id))
 }
 
+async function resolveBlockUnitIds(blockId: string) {
+  const buildingsResult = await getBuildings({ BlockId: blockId, Page: 1, PageSize: 500 })
+  const buildingIds = new Set((buildingsResult.items ?? []).map((b) => b.id))
+  if (buildingIds.size === 0) return new Set<string>()
+
+  let floorIds = new Set(
+    floors.value.filter((f) => buildingIds.has(f.buildingId)).map((f) => f.id),
+  )
+  if (floorIds.size === 0) {
+    const floorsResult = await getFloors({ Page: 1, PageSize: 2000 })
+    floorIds = new Set(
+      (floorsResult.items ?? [])
+        .filter((f) => buildingIds.has(f.buildingId))
+        .map((f) => f.id),
+    )
+  }
+  return new Set(units.value.filter((u) => floorIds.has(u.floorId)).map((u) => u.id))
+}
+
+async function resolveScopeUnitIds() {
+  if (blockIdFilter.value) return resolveBlockUnitIds(blockIdFilter.value)
+  if (buildingIdFilter.value) return resolveBuildingUnitIds(buildingIdFilter.value)
+  return null
+}
+
 async function fetchSalesContracts(params?: SalesContractParams): Promise<PagedResult<SalesContract>> {
   if (!buildingUnitIds.value) {
     return getSalesContracts(params)
@@ -184,22 +248,38 @@ async function fetchSalesContracts(params?: SalesContractParams): Promise<PagedR
 }
 
 const {
-  items, loading, search, load, onSearch,
+  items,
+  loading,
+  search,
+  load,
+  onSearch,
+  setSortMode,
+  onTableSort: cyclePagedSort,
+  sortField,
+  sortOrder,
+  sortMode,
 } = usePagedList<SalesContract, SalesContractParams>(fetchSalesContracts)
 
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const statusFilter = ref<number | null>(null)
 const unitStatusFilter = ref<number | null>(null)
 const paymentTypeFilter = ref<number | null>(null)
 const deliveryDateModel = ref<Date | null>(null)
 const firstInstallmentDateModel = ref<Date | null>(null)
+const contractDateModel = ref<Date | null>(null)
 const detailContract = ref<SalesContract | null>(null)
 const unitTablePage = ref(1)
 const unitTablePageSize = ref(20)
+
+/** نقر رأس العمود — يبدّل الوضع الثلاثة ويعيد الصفحة الأولى */
+function onTableSort() {
+  unitTablePage.value = 1
+  cyclePagedSort()
+}
 
 const unitScopedRows = computed((): SalesTableRow[] => {
   const sourceUnits = buildingUnitIds.value
@@ -229,25 +309,73 @@ const unitScopedRows = computed((): SalesTableRow[] => {
       if (!q) return true
       const meta = unitMeta(unit)
       return (
-        meta.unitNumber.toLowerCase().includes(q) ||
+        unitSearchMatches(meta.unitNumber, q) ||
         meta.buildingName.toLowerCase().includes(q) ||
         meta.complexName.toLowerCase().includes(q) ||
+        unitSearchMatches(contract?.contractNumber, q) ||
         (contract?.contractNumber || '').toLowerCase().includes(q)
       )
     })
-    .sort((a, b) => (a.unitNumber || '').localeCompare(b.unitNumber || '', 'ar', { numeric: true }))
-    .map((unit, index) => {
-      const meta = unitMeta(unit)
-      return {
-        key: unit.id,
-        sequence: index + 1,
-        ...meta,
-        unitId: unit.id,
-        contract: contractByUnitId.value.get(unit.id) ?? null,
-      }
-    })
 
-  return rows
+  const rowTime = (unit: Unit) => {
+    const contract = contractByUnitId.value.get(unit.id)
+    const raw =
+      contract?.createdAt ||
+      contract?.updatedAt ||
+      contract?.contractDate ||
+      unit.createdAt ||
+      ''
+    return raw ? new Date(raw).getTime() : 0
+  }
+
+  rows.sort((a, b) => {
+    const contractA = contractByUnitId.value.get(a.id)
+    const contractB = contractByUnitId.value.get(b.id)
+    const numA = contractA?.contractNumber
+    const numB = contractB?.contractNumber
+    const hasA = !!numA?.toString().trim()
+    const hasB = !!numB?.toString().trim()
+
+    if (sortMode.value === 'sequential') {
+      // رقم العقد 1، 2، 3… ثم الوحدات بلا عقد حسب رقم الوحدة
+      if (hasA !== hasB) return hasA ? -1 : 1
+      if (hasA && hasB) {
+        const byContract = compareContractNumbers(numA, numB)
+        if (byContract !== 0) return byContract
+      }
+      return compareUnitNumbers(a.unitNumber, b.unitNumber)
+    }
+
+    if (sortMode.value === 'reverse') {
+      if (hasA !== hasB) return hasA ? -1 : 1
+      if (hasA && hasB) {
+        const byContract = compareContractNumbers(numB, numA)
+        if (byContract !== 0) return byContract
+      }
+      return compareUnitNumbers(b.unitNumber, a.unitNumber)
+    }
+
+    // آخر إضافة: الأحدث أولاً، ثم رقم العقد، ثم رقم الوحدة
+    const ta = rowTime(a)
+    const tb = rowTime(b)
+    if (ta !== tb) return tb - ta
+    if (hasA && hasB) {
+      const byContract = compareContractNumbers(numA, numB)
+      if (byContract !== 0) return byContract
+    }
+    return compareUnitNumbers(a.unitNumber, b.unitNumber)
+  })
+
+  return rows.map((unit, index) => {
+    const meta = unitMeta(unit)
+    return {
+      key: unit.id,
+      sequence: index + 1,
+      ...meta,
+      unitId: unit.id,
+      contract: contractByUnitId.value.get(unit.id) ?? null,
+    }
+  })
 })
 
 const pagedUnitRows = computed(() => {
@@ -283,6 +411,7 @@ function emptyForm(): CreateSalesContractDto {
     contractPaymentType: ContractPaymentType.Cash,
     pricingMode: PricingMode.Manual,
     pricePlanId: null,
+    contractDesignId: null,
     sellingPrice: 0,
     discount: 0,
     tax: 0,
@@ -295,6 +424,8 @@ function emptyForm(): CreateSalesContractDto {
     years: null,
     paymentIntervalMonths: null,
     firstInstallmentDate: null,
+    contractDate: null,
+    contractNumber: null,
     contractStatus: ContractStatus.Draft,
     customerId: '',
     unitId: '',
@@ -306,7 +437,22 @@ function emptyForm(): CreateSalesContractDto {
 const form = reactive<CreateSalesContractDto>(emptyForm())
 const pricingType = ref<PricePlanPricingType>(PricePlanPricingType.Amount)
 const installmentRows = ref<PricePlanInstallmentItem[]>([])
+const downPaymentScheduleEnabled = ref(false)
+const downPaymentRows = ref<ContractDownPaymentScheduleItem[]>([])
 const suppressScheduleRebuild = ref(false)
+
+const activeContractDesign = computed(() => {
+  if (form.contractDesignId) {
+    return contractDesigns.value.find((d) => d.id === form.contractDesignId) ?? null
+  }
+  if (!form.complexId) return null
+  const inComplex = contractDesigns.value.filter((d) => d.complexId === form.complexId)
+  return inComplex[0] ?? null
+})
+const contractNumberSequence = computed(() => {
+  const seq = activeContractDesign.value?.contractNumberSequence
+  return seq && seq > 0 ? seq : 1
+})
 
 const isCash = computed(() => form.contractPaymentType === ContractPaymentType.Cash)
 const isBank = computed(() => form.contractPaymentType === ContractPaymentType.RealEstateBank)
@@ -391,6 +537,42 @@ const computedRemaining = computed(() => {
   return (form.sellingPrice || 0) - financed - downPaymentAmount.value - deliveryAmountValue.value
 })
 
+/** المتبقي > 0 فقط يحتاج سنوات/فترة/جدول أقساط */
+const needsInstallmentSchedule = computed(
+  () => usesInstallments.value && Math.round(computedRemaining.value) > 0,
+)
+const remainingIsZero = computed(() => Math.round(computedRemaining.value) === 0)
+
+const bankNameOptions = computed(() => {
+  const cid = form.complexId
+  if (!cid) return [] as { label: string; value: string; designId: string }[]
+  const seen = new Set<string>()
+  const options: { label: string; value: string; designId: string }[] = []
+  for (const d of contractDesigns.value) {
+    if (d.complexId !== cid) continue
+    const name = d.realEstateBankName?.trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    options.push({ label: name, value: name, designId: d.id })
+  }
+  return options
+})
+
+function onBankNamePicked(value: string | null) {
+  form.bankName = value
+  const match = bankNameOptions.value.find((o) => o.value === value)
+  form.contractDesignId = match?.designId ?? form.contractDesignId ?? null
+}
+
+function applyDefaultBankFromDesign() {
+  if (!isBank.value) return
+  if (form.bankName?.trim()) return
+  const first = bankNameOptions.value[0]
+  if (!first) return
+  form.bankName = first.value
+  form.contractDesignId = first.designId
+}
+
 const remainingPercent = computed(() => {
   if (isManualPricing.value && isPercentage.value) {
     return Math.round((100 - (form.downPayment || 0) - (form.deliveryAmount || 0)) * 100) / 100
@@ -405,7 +587,7 @@ const computedMonths = computed(() => {
 })
 
 const computedInstallmentCount = computed(() => {
-  if (!usesInstallments.value || !form.years || !form.paymentIntervalMonths) return 0
+  if (!needsInstallmentSchedule.value || !form.years || !form.paymentIntervalMonths) return 0
   const months = form.years * 12
   if (months % form.paymentIntervalMonths !== 0) return 0
   return months / form.paymentIntervalMonths
@@ -414,7 +596,7 @@ const computedInstallmentCount = computed(() => {
 /** الأقساط تُقسَّم على المتبقي وليس مبلغ المصرف */
 const computedInstallmentAmount = computed(() => {
   const count = computedInstallmentCount.value
-  if (!count || computedRemaining.value <= 0) return 0
+  if (!count || Math.round(computedRemaining.value) <= 0) return 0
   return computedRemaining.value / count
 })
 
@@ -439,19 +621,69 @@ const scheduleMatchesRemaining = computed(() => {
   return scheduleSumAmount.value === Math.round(computedRemaining.value)
 })
 
+const downPaymentScheduleSum = computed(() =>
+  Math.round(downPaymentRows.value.reduce((s, r) => s + (r.amount || 0), 0)),
+)
+
+const downPaymentScheduleMatches = computed(
+  () =>
+    downPaymentScheduleEnabled.value &&
+    downPaymentRows.value.length > 0 &&
+    downPaymentScheduleSum.value === Math.round(downPaymentAmount.value),
+)
+
 function addMonths(date: Date, months: number) {
   const d = new Date(date)
   d.setMonth(d.getMonth() + months)
   return d
 }
 
+function rebuildDownPaymentSchedule(count = Math.max(downPaymentRows.value.length, 2)) {
+  const total = Math.round(downPaymentAmount.value)
+  if (!downPaymentScheduleEnabled.value || total <= 0) {
+    downPaymentRows.value = []
+    return
+  }
+  const n = Math.max(2, Math.min(24, count))
+  const base = Math.round(total / n)
+  let allocated = 0
+  const start = contractDateModel.value || new Date()
+  downPaymentRows.value = Array.from({ length: n }, (_, i) => {
+    const amount = i === n - 1 ? total - allocated : base
+    allocated += amount
+    return {
+      name: `دفعة مقدمة ${i + 1}`,
+      dueDate: addMonths(start, i).toISOString(),
+      amount,
+    }
+  })
+}
+
+function addDownPaymentRow() {
+  const start = contractDateModel.value || new Date()
+  downPaymentRows.value.push({
+    name: `دفعة مقدمة ${downPaymentRows.value.length + 1}`,
+    dueDate: addMonths(start, downPaymentRows.value.length).toISOString(),
+    amount: 0,
+  })
+}
+
+function removeDownPaymentRow(index: number) {
+  downPaymentRows.value.splice(index, 1)
+}
+
+function onDownScheduleToggle(enabled: boolean) {
+  if (enabled) rebuildDownPaymentSchedule()
+  else downPaymentRows.value = []
+}
+
 function rebuildInstallmentSchedule() {
   const count = computedInstallmentCount.value
   if (
     !isManualPricing.value ||
-    !usesInstallments.value ||
+    !needsInstallmentSchedule.value ||
     !count ||
-    computedRemaining.value < 0 ||
+    Math.round(computedRemaining.value) <= 0 ||
     (isPercentage.value && remainingPercent.value < 0)
   ) {
     installmentRows.value = []
@@ -515,6 +747,7 @@ watch(
   () => [
     isManualPricing.value,
     usesInstallments.value,
+    needsInstallmentSchedule.value,
     pricingType.value,
     form.sellingPrice,
     form.downPayment,
@@ -527,6 +760,13 @@ watch(
   () => {
     if (suppressScheduleRebuild.value) return
     rebuildInstallmentSchedule()
+  },
+)
+
+watch(
+  () => form.complexId,
+  () => {
+    if (isBank.value) applyDefaultBankFromDesign()
   },
 )
 
@@ -559,7 +799,7 @@ const customerOptions = computed(() =>
   ),
 )
 const unitOptions = computed(() =>
-  asSelectOptions(filteredUnits.value, (u) => {
+  filteredUnits.value.map((u) => {
     const status =
       u.status === UnitStatus.Available
         ? 'متاح'
@@ -570,7 +810,12 @@ const unitOptions = computed(() =>
             : u.status === UnitStatus.Rented
               ? 'مؤجر'
               : 'صيانة'
-    return `${u.unitNumber || u.id} (${status})`
+    const label = `${u.unitNumber || u.id} (${status})`
+    return {
+      id: u.id,
+      label,
+      searchKey: normalizeUnitSearch(u.unitNumber || u.id),
+    }
   }),
 )
 const employeeOptions = computed(() =>
@@ -597,6 +842,7 @@ async function loadLookups() {
     floorResult,
     employeeResult,
     planResult,
+    designsResult,
     contractsResult,
   ] = await Promise.all([
     getComplexes({ Page: 1, PageSize: 200 }),
@@ -606,6 +852,7 @@ async function loadLookups() {
     getFloors({ Page: 1, PageSize: 1000 }),
     getEmployees({ Page: 1, PageSize: 500 }),
     getPricePlans({ Page: 1, PageSize: 500 }).catch(() => ({ items: [] as PricePlan[] })),
+    getContractDesigns({ Page: 1, PageSize: 200 }).catch(() => ({ items: [] as ContractDesign[] })),
     getSalesContracts({ Page: 1, PageSize: 1000 }).catch(() => ({ items: [] as SalesContract[] })),
   ])
   complexes.value = complexResult.items ?? []
@@ -615,6 +862,7 @@ async function loadLookups() {
   floors.value = floorResult.items ?? []
   employees.value = employeeResult.items ?? []
   pricePlans.value = planResult.items ?? []
+  contractDesigns.value = designsResult.items ?? []
   allContracts.value = contractsResult.items ?? []
   complexMap.value = Object.fromEntries(
     complexes.value.map((c) => [c.id, c.nameAr || c.name || c.id]),
@@ -680,6 +928,7 @@ function onPricingModeChange() {
 function onPaymentTypeChange() {
   if (isCash.value) {
     form.bankName = null
+    form.contractDesignId = null
     form.years = null
     form.paymentIntervalMonths = null
     form.firstInstallmentDate = null
@@ -691,12 +940,15 @@ function onPaymentTypeChange() {
 
   form.years = form.years || 1
   form.paymentIntervalMonths = form.paymentIntervalMonths || 1
-  if (!firstInstallmentDateModel.value) {
+  if (needsInstallmentSchedule.value && !firstInstallmentDateModel.value) {
     firstInstallmentDateModel.value = new Date()
   }
   if (isCashInstallments.value) {
     form.bankName = null
     form.financedAmount = 0
+  }
+  if (isBank.value) {
+    applyDefaultBankFromDesign()
   }
   rebuildInstallmentSchedule()
 }
@@ -706,8 +958,11 @@ function openCreate(unit?: Unit | SalesTableRow | null) {
   suppressScheduleRebuild.value = true
   deliveryDateModel.value = new Date()
   firstInstallmentDateModel.value = null
+  contractDateModel.value = null
   pricingType.value = PricePlanPricingType.Amount
   installmentRows.value = []
+  downPaymentScheduleEnabled.value = false
+  downPaymentRows.value = []
   const selectedUnit =
     unit && 'unitId' in unit
       ? unitById.value[unit.unitId]
@@ -716,6 +971,7 @@ function openCreate(unit?: Unit | SalesTableRow | null) {
         : null
   Object.assign(form, emptyForm(), {
     complexId:
+      auth.scopedComplexId ||
       selectedUnit?.complexId ||
       complexFilter.value ||
       complexes.value[0]?.id ||
@@ -727,21 +983,21 @@ function openCreate(unit?: Unit | SalesTableRow | null) {
   dialogVisible.value = true
 }
 
-function openEdit(row: SalesContract | SalesTableRow) {
+async function openEdit(row: SalesContract | SalesTableRow) {
   const contract = 'contract' in row ? row.contract : row
   if (!contract) return
   editingId.value = contract.id
   suppressScheduleRebuild.value = true
   deliveryDateModel.value = contract.deliveryDate ? new Date(contract.deliveryDate) : null
-  firstInstallmentDateModel.value = contract.firstInstallmentDate
-    ? new Date(contract.firstInstallmentDate)
-    : null
+  firstInstallmentDateModel.value = parseContractDate(contract.firstInstallmentDate)
+  contractDateModel.value = parseContractDate(contract.contractDate)
   pricingType.value = PricePlanPricingType.Amount
   Object.assign(form, {
     contractType: contract.contractType ?? ContractType.Sale,
     contractPaymentType: contract.contractPaymentType ?? ContractPaymentType.Cash,
     pricingMode: contract.pricingMode ?? PricingMode.Manual,
     pricePlanId: contract.pricePlanId,
+    contractDesignId: contract.contractDesignId ?? null,
     sellingPrice: contract.sellingPrice,
     discount: contract.discount,
     tax: contract.tax,
@@ -754,14 +1010,65 @@ function openEdit(row: SalesContract | SalesTableRow) {
     years: contract.years,
     paymentIntervalMonths: contract.paymentIntervalMonths,
     firstInstallmentDate: contract.firstInstallmentDate,
+    contractDate: contract.contractDate,
+    contractNumber: contract.contractNumber || null,
     contractStatus: contract.contractStatus,
     customerId: contract.customerId,
     unitId: contract.unitId,
     salesAgentId: contract.salesAgentId,
     complexId: contract.complexId,
   })
+
+  let existingInstallments = contract.installments ?? []
+  let existingDown = contract.downPaymentInstallments ?? contract.downPaymentSchedule ?? []
+  try {
+    const full = await getSalesContract(contract.id)
+    if (full.installments?.length) existingInstallments = full.installments
+    if (full.downPaymentInstallments?.length) existingDown = full.downPaymentInstallments
+    else if (full.downPaymentSchedule?.length) existingDown = full.downPaymentSchedule
+  } catch {
+    /* استخدم الأقساط من الصف إن وُجدت */
+  }
+
+  const activeInstallments = (existingInstallments || []).filter(
+    (i) => !('status' in i) || i.status !== InstallmentStatus.Cancelled,
+  )
+  if (activeInstallments.length > 0) {
+    installmentRows.value = activeInstallments
+      .slice()
+      .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))
+      .map((i, idx) => {
+        const amount = Math.round(i.amount || 0)
+        const percent = form.sellingPrice
+          ? Math.round((amount / form.sellingPrice) * 10000) / 100
+          : 0
+        return {
+          index: idx + 1,
+          dueDate: i.dueDate || undefined,
+          amount,
+          percent,
+        }
+      })
+  } else {
+    rebuildInstallmentSchedule()
+  }
+
+  const downItems = (existingDown || []).filter(
+    (i) => !('status' in i) || (i as Installment).status !== InstallmentStatus.Cancelled,
+  )
+  if (downItems.length > 0) {
+    downPaymentScheduleEnabled.value = true
+    downPaymentRows.value = downItems.map((i, idx) => ({
+      name: ('name' in i && i.name) || `دفعة مقدمة ${idx + 1}`,
+      dueDate: i.dueDate || new Date().toISOString(),
+      amount: Math.round(i.amount || 0),
+    }))
+  } else {
+    downPaymentScheduleEnabled.value = false
+    downPaymentRows.value = []
+  }
+
   suppressScheduleRebuild.value = false
-  rebuildInstallmentSchedule()
   dialogVisible.value = true
 }
 
@@ -793,11 +1100,49 @@ async function downloadPdf(row: SalesContract | SalesTableRow) {
       const parsed = JSON.parse(text)
       throw new Error(parsed.message || 'فشل توليد ملف PDF')
     }
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
-    window.open(url, '_blank', 'noopener,noreferrer')
+    const pdfBlob = new Blob([blob], { type: 'application/pdf' })
+    const url = URL.createObjectURL(pdfBlob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `عقد-${contract.contractNumber || contract.id.slice(0, 8)}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 120_000)
   } catch (error) {
     notify.error(getErrorMessage(error))
+  }
+}
+
+
+/** يوم تقويمي من قيمة API دون انزياح المنطقة الزمنية */
+function parseContractDate(value: string | null | undefined): Date | null {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+/** إرسال تاريخ العقد كـ yyyy-MM-dd لتجنّب انزياح toISOString */
+function toContractDatePayload(value: Date | null): string | null {
+  if (!value) return null
+  const y = value.getFullYear()
+  const m = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function patchContractLocal(updated: SalesContract) {
+  const apply = (list: SalesContract[]) => {
+    const idx = list.findIndex((c) => c.id === updated.id)
+    if (idx >= 0) list[idx] = { ...list[idx], ...updated }
+    else list.push(updated)
+    return [...list]
+  }
+  allContracts.value = apply(allContracts.value)
+  items.value = apply(items.value)
+  if (detailContract.value?.id === updated.id) {
+    detailContract.value = { ...detailContract.value, ...updated }
   }
 }
 
@@ -818,14 +1163,34 @@ function buildPayload(): CreateSalesContractDto {
     bankName: isBank.value ? form.bankName : null,
     years: usesInstallments.value ? form.years : null,
     paymentIntervalMonths: usesInstallments.value ? form.paymentIntervalMonths : null,
-    firstInstallmentDate: usesInstallments.value
-      ? firstInstallmentDateModel.value?.toISOString() ?? null
+    firstInstallmentDate: needsInstallmentSchedule.value
+      ? toContractDatePayload(firstInstallmentDateModel.value)
       : null,
+    contractDate: toContractDatePayload(contractDateModel.value),
+    contractNumber: editingId.value ? (form.contractNumber?.toString().trim() || null) : null,
+    contractDesignId: form.contractDesignId || null,
     contractStatus: form.contractStatus,
     customerId: form.customerId,
     unitId: form.unitId,
     salesAgentId: form.salesAgentId,
     complexId: form.complexId,
+    installmentSchedule:
+      needsInstallmentSchedule.value && installmentRows.value.length
+        ? installmentRows.value.map((r, i) => ({
+            index: r.index || i + 1,
+            dueDate: r.dueDate || firstInstallmentDateModel.value?.toISOString() || new Date().toISOString(),
+            amount: Math.round(r.amount || 0),
+            percent: r.percent ?? null,
+          }))
+        : null,
+    downPaymentSchedule:
+      downPaymentScheduleEnabled.value && downPaymentRows.value.length
+        ? downPaymentRows.value.map((r) => ({
+            name: r.name?.trim() || null,
+            dueDate: r.dueDate || new Date().toISOString(),
+            amount: Math.round(r.amount || 0),
+          }))
+        : null,
   }
   return payload
 }
@@ -834,6 +1199,22 @@ function validateForm() {
   if (!form.complexId || !form.customerId || !form.unitId || !form.salesAgentId) {
     notify.warning('أكمل بيانات المجمع والعميل والوحدة ووكيل المبيعات')
     return false
+  }
+  if (editingId.value) {
+    const raw = (form.contractNumber || '').toString().trim()
+    if (!raw) {
+      notify.warning('أدخل رقم العقد')
+      return false
+    }
+    const num = Number(raw)
+    if (!Number.isInteger(num) || num < 1) {
+      notify.warning('رقم العقد يجب أن يكون رقماً صحيحاً موجباً')
+      return false
+    }
+    if (num < contractNumberSequence.value) {
+      notify.warning(`رقم العقد يجب ألا يقل عن تسلسل التصميم (${contractNumberSequence.value})`)
+      return false
+    }
   }
   if (isSystemPricing.value && !form.pricePlanId) {
     notify.warning('اختر خطة الأسعار')
@@ -855,6 +1236,18 @@ function validateForm() {
     notify.warning('المتبقي سالب — راجع السعر والمقدمة ومبلغ الاستلام والمصرف')
     return false
   }
+  if (downPaymentScheduleEnabled.value) {
+    if (!downPaymentRows.value.length) {
+      notify.warning('أضف بنود تقسيط المقدمة أو عطّل الخيار')
+      return false
+    }
+    if (!downPaymentScheduleMatches.value) {
+      notify.warning(
+        `مجموع تقسيط المقدمة (${downPaymentScheduleSum.value}) يجب أن يساوي المقدمة (${Math.round(downPaymentAmount.value)})`,
+      )
+      return false
+    }
+  }
   if (isCash.value) {
     if (!deliveryDateModel.value) {
       notify.warning('حدد تاريخ الاستلام للكاش')
@@ -866,7 +1259,7 @@ function validateForm() {
     notify.warning('أدخل اسم المصرف العقاري')
     return false
   }
-  if (isBank.value && (!form.financedAmount || form.financedAmount <= 0)) {
+  if (isBank.value && (!form.financedAmount || form.financedAmount <= 0) && !remainingIsZero.value) {
     notify.warning('مبلغ المصرف العقاري يجب أن يكون أكبر من صفر')
     return false
   }
@@ -882,9 +1275,9 @@ function validateForm() {
     notify.warning('عدد الأشهر يجب أن يقبل القسمة على فترة الدفع بدون باقٍ')
     return false
   }
-  if (computedRemaining.value <= 0) {
-    notify.warning('المتبقي يجب أن يكون أكبر من صفر لتقسيم الأقساط')
-    return false
+  // المتبقي صفر → حفظ السنوات/الأشهر بدون جدول أقساط
+  if (remainingIsZero.value) {
+    return true
   }
   if (!firstInstallmentDateModel.value) {
     notify.warning('حدد تاريخ أول قسط')
@@ -936,31 +1329,34 @@ async function save() {
   saving.value = true
   try {
     const payload = buildPayload()
+    let savedContract: SalesContract | null = null
     if (editingId.value) {
-      await updateSalesContract(editingId.value, payload)
+      savedContract = await updateSalesContract(editingId.value, payload)
       await markUnitSoldAfterContract(payload.unitId)
       notify.success('تم التحديث')
     } else {
-      const created = await createSalesContract(payload)
-      await markUnitSoldAfterContract(created.unitId || payload.unitId)
-      const installmentCount = created.installments?.length ?? 0
+      savedContract = await createSalesContract(payload)
+      await markUnitSoldAfterContract(savedContract.unitId || payload.unitId)
+      const installmentCount = savedContract.installments?.length ?? 0
       notify.success(
         installmentCount > 0
-          ? `تم إنشاء العقد رقم ${created.contractNumber} مع ${installmentCount} قسط — الوحدة أصبحت مباعة`
-          : `تم إنشاء العقد رقم ${created.contractNumber} — الوحدة أصبحت مباعة`,
+          ? `تم إنشاء العقد رقم ${savedContract.contractNumber} مع ${installmentCount} قسط — الوحدة أصبحت مباعة`
+          : `تم إنشاء العقد رقم ${savedContract.contractNumber} — الوحدة أصبحت مباعة`,
       )
       if (installmentCount > 0) {
-        detailContract.value = created
+        detailContract.value = savedContract
         detailVisible.value = true
       }
     }
     dialogVisible.value = false
     await loadLookups()
-    if (buildingIdFilter.value) {
-      buildingUnitIds.value = await resolveBuildingUnitIds(buildingIdFilter.value)
+    if (scopeFilterActive.value) {
+      buildingUnitIds.value = await resolveScopeUnitIds()
       unitTablePage.value = 1
     }
     await load()
+    // أعِد تطبيق رد الحفظ بعد الـ GET حتى لا تُستبدل بتاريخ قديم من الكاش
+    if (savedContract?.id) patchContractLocal(savedContract)
   } catch (error) {
     notify.error(getErrorMessage(error))
   } finally {
@@ -976,8 +1372,8 @@ async function remove(row: SalesContract | SalesTableRow) {
     await deleteSalesContract(contract.id)
     notify.success('تم الحذف')
     await loadLookups()
-    if (buildingIdFilter.value) {
-      buildingUnitIds.value = await resolveBuildingUnitIds(buildingIdFilter.value)
+    if (scopeFilterActive.value) {
+      buildingUnitIds.value = await resolveScopeUnitIds()
     }
     await load()
   } catch (error) {
@@ -989,6 +1385,8 @@ async function clearBuildingFilter() {
   const query = { ...route.query }
   delete query.buildingId
   delete query.buildingName
+  delete query.blockId
+  delete query.blockName
   buildingUnitIds.value = null
   unitStatusFilter.value = null
   unitTablePage.value = 1
@@ -1004,8 +1402,8 @@ function onUnitStatusFilterChange(value: number | null) {
 onMounted(async () => {
   try {
     await loadLookups()
-    if (buildingIdFilter.value) {
-      buildingUnitIds.value = await resolveBuildingUnitIds(buildingIdFilter.value)
+    if (scopeFilterActive.value) {
+      buildingUnitIds.value = await resolveScopeUnitIds()
     }
   } catch (error) {
     notify.error(getErrorMessage(error))
@@ -1019,16 +1417,16 @@ onMounted(async () => {
     <PageHeader
       title="عقود المبيعات"
       :subtitle="
-        buildingIdFilter
-          ? `عقود ومبيعات مبنى: ${buildingNameFilter || buildingIdFilter.slice(0, 8)}`
+        scopeFilterActive
+          ? `عقود ومبيعات ${scopeFilterKindLabel}: ${scopeFilterLabel}`
           : 'بيع وإيجار — كاش أو مصرف عقاري مع أقساط تلقائية'
       "
     >
       <template #actions>
         <Button
-          v-if="buildingIdFilter"
-          label="كل المباني"
-          icon="pi pi-building"
+          v-if="scopeFilterActive"
+          :label="blockIdFilter ? 'كل البلوكات' : 'كل المباني'"
+          :icon="blockIdFilter ? 'pi pi-th-large' : 'pi pi-building'"
           severity="secondary"
           outlined
           @click="clearBuildingFilter"
@@ -1037,10 +1435,10 @@ onMounted(async () => {
       </template>
     </PageHeader>
 
-    <div v-if="buildingIdFilter" class="building-filter-banner">
+    <div v-if="scopeFilterActive" class="building-filter-banner">
       <div>
-        <strong>فلتر المبنى نشط</strong>
-        <span>{{ buildingNameFilter || buildingIdFilter.slice(0, 8) }}</span>
+        <strong>فلتر {{ scopeFilterKindLabel }} نشط</strong>
+        <span>{{ scopeFilterLabel }}</span>
       </div>
       <Button label="إزالة الفلتر" size="small" text @click="clearBuildingFilter" />
     </div>
@@ -1048,11 +1446,14 @@ onMounted(async () => {
     <div class="data-panel">
       <FilterBar
         v-model:search="search"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode"
         placeholder="ابحث بوحدة أو مجمع أو رقم عقد..."
         @search="onSearchUnits"
       >
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -1092,8 +1493,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="tableLoading && tableRows.length === 0" :rows="8" :columns="10" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="tableRows"
         :loading="tableLoading"
         lazy
@@ -1105,42 +1507,47 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onTablePage"
-      >
-        <Column header="التسلسل" style="width: 80px">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column header="التسلسل" style="width: 80px" sortable>
           <template #body="{ data }: { data: SalesTableRow }">{{ data.sequence }}</template>
         </Column>
-        <Column header="المجمع">
+        <Column header="المجمع" sortable>
           <template #body="{ data }: { data: SalesTableRow }">{{ data.complexName }}</template>
         </Column>
-        <Column header="المبنى">
+        <Column header="المبنى" sortable>
           <template #body="{ data }: { data: SalesTableRow }">{{ data.buildingName }}</template>
         </Column>
-        <Column header="الوحدة" style="width: 110px">
+        <Column header="الوحدة" style="width: 110px" sortable>
           <template #body="{ data }: { data: SalesTableRow }">{{ data.unitNumber }}</template>
         </Column>
-        <Column header="الحالة" style="width: 100px">
+        <Column header="الحالة" style="width: 100px" sortable>
           <template #body="{ data }: { data: SalesTableRow }">
             <span class="unit-status" :class="`is-${data.unitStatus}`">
               {{ labelOf(unitStatusOptions, data.unitStatus) }}
             </span>
           </template>
         </Column>
-        <Column header="رقم العقد" style="width: 100px">
+        <Column header="رقم العقد" style="width: 100px" sortable>
           <template #body="{ data }: { data: SalesTableRow }">
             {{ data.contract?.contractNumber || '—' }}
           </template>
         </Column>
-        <Column header="الدفع" style="width: 110px">
+        <Column header="الدفع" style="width: 110px" sortable>
           <template #body="{ data }: { data: SalesTableRow }">
             {{ data.contract ? labelOf(contractPaymentTypeOptions, data.contract.contractPaymentType) : '—' }}
           </template>
         </Column>
-        <Column header="سعر البيع" style="width: 110px">
+        <Column header="سعر البيع" style="width: 110px" sortable>
           <template #body="{ data }: { data: SalesTableRow }">
             {{ data.contract ? formatMoney(data.contract.sellingPrice) : '—' }}
           </template>
         </Column>
-        <Column header="العميل">
+        <Column header="العميل" sortable>
           <template #body="{ data }: { data: SalesTableRow }">
             {{
               data.contract
@@ -1175,6 +1582,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -1188,6 +1596,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"
@@ -1209,6 +1618,27 @@ onMounted(async () => {
             checkmark
             append-to="body"
           />
+        </div>
+        <div class="field">
+          <label>تاريخ العقد (اختياري)</label>
+          <DatePicker
+            v-model="contractDateModel"
+            date-format="yy-mm-dd"
+            show-icon
+            show-clear
+            placeholder="اليوم إن تُرك فارغاً"
+          />
+        </div>
+        <div v-if="editingId" class="field">
+          <label>رقم العقد</label>
+          <InputText
+            v-model="form.contractNumber"
+            inputmode="numeric"
+            placeholder="مثال: 10"
+          />
+          <small class="field-hint">
+            حسب تسلسل تصميم العقد — الحد الأدنى: {{ contractNumberSequence }}
+          </small>
         </div>
         <div class="field">
           <label>طريقة الدفع</label>
@@ -1279,6 +1709,7 @@ onMounted(async () => {
             checkmark
             append-to="body"
             filter
+            :filter-fields="['label', 'searchKey']"
           />
           <small v-if="isSystemPricing && form.pricePlanId && !unitOptions.length" class="field-hint">
             لا توجد وحدات مرتبطة بهذه الخطة
@@ -1329,6 +1760,86 @@ onMounted(async () => {
                   : 'مبلغ نقدي يُخصم من سعر الوحدة'
               }}
             </small>
+          </div>
+          <div class="field full down-schedule-toggle">
+            <label>تقسيط المقدمة</label>
+            <div class="toggle-row">
+              <ToggleSwitch
+                v-model="downPaymentScheduleEnabled"
+                @update:model-value="onDownScheduleToggle"
+              />
+              <small>جدول دفعات محفوظ يُسدَّد لاحقاً مثل الأقساط</small>
+            </div>
+          </div>
+          <div v-if="downPaymentScheduleEnabled" class="field full schedule-block">
+            <div class="schedule-head">
+              <div>
+                <strong>جدول تقسيط المقدمة</strong>
+                <small>المجموع يجب أن يساوي مبلغ المقدمة ({{ formatMoney(downPaymentAmount) }})</small>
+              </div>
+              <div class="schedule-head-actions">
+                <Button
+                  label="إضافة دفعة"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  @click="addDownPaymentRow"
+                />
+                <Button
+                  label="إعادة التوزيع بالتساوي"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  @click="rebuildDownPaymentSchedule(downPaymentRows.length || 2)"
+                />
+              </div>
+            </div>
+            <DataTable :value="downPaymentRows" size="small" striped-rows class="schedule-table">
+              <Column header="الاسم" sortable>
+                <template #body="{ data }">
+                  <InputText v-model="data.name" placeholder="اسم الدفعة" />
+                </template>
+              </Column>
+              <Column header="التاريخ" sortable>
+                <template #body="{ data }">
+                  <DatePicker
+                    :model-value="data.dueDate ? new Date(data.dueDate) : null"
+                    date-format="yy-mm-dd"
+                    show-icon
+                    @update:model-value="
+                      (d) => {
+                        const value = Array.isArray(d) ? d[0] : d
+                        if (value instanceof Date) data.dueDate = value.toISOString()
+                      }
+                    "
+                  />
+                </template>
+              </Column>
+              <Column header="المبلغ" sortable>
+                <template #body="{ data }">
+                  <InputNumber v-model="data.amount" :min="0" />
+                </template>
+              </Column>
+              <Column header="" style="width: 56px">
+                <template #body="{ index }">
+                  <Button
+                    icon="pi pi-trash"
+                    severity="danger"
+                    text
+                    rounded
+                    :disabled="downPaymentRows.length <= 1"
+                    @click="removeDownPaymentRow(index)"
+                  />
+                </template>
+              </Column>
+            </DataTable>
+            <div
+              class="schedule-footer"
+              :class="{ ok: downPaymentScheduleMatches, bad: !downPaymentScheduleMatches }"
+            >
+              المجموع: <strong>{{ formatMoney(downPaymentScheduleSum) }}</strong>
+              / المقدمة: <strong>{{ formatMoney(downPaymentAmount) }}</strong>
+            </div>
           </div>
           <div class="field">
             <label>{{ isPercentage ? 'الاستلام ٪' : 'الاستلام (مبلغ)' }}</label>
@@ -1383,8 +1894,11 @@ onMounted(async () => {
               =
               <b :class="{ 'is-bad': computedRemaining < 0 }">{{ formatMoney(computedRemaining) }}</b>
             </p>
-            <small v-if="usesInstallments">
+            <small v-if="needsInstallmentSchedule">
               مجموع جدول الأقساط أدناه يجب أن يطابق هذا الباقي تماماً.
+            </small>
+            <small v-else-if="usesInstallments && remainingIsZero" class="ok-hint">
+              المتبقي صفر — السنوات والأشهر تُحفظ، ولن يُنشأ/يُطبع جدول الأقساط.
             </small>
           </div>
         </template>
@@ -1430,14 +1944,35 @@ onMounted(async () => {
           </div>
           <template v-if="isBank">
             <div class="field">
-              <label>اسم المصرف</label>
-              <InputText v-model="form.bankName" />
+              <label>اسم المصرف العقاري</label>
+              <Select
+                v-if="bankNameOptions.length"
+                v-model="form.bankName"
+                :options="bankNameOptions"
+                option-label="label"
+                option-value="value"
+                editable
+                placeholder="اختر من تصميم العقد"
+                checkmark
+                append-to="body"
+                @update:model-value="onBankNamePicked"
+              />
+              <RememberedInput
+                v-else
+                v-model="form.bankName"
+                memory-key="contract.bankName"
+                placeholder="أدخل اسم المصرف"
+              />
+              <small v-if="bankNameOptions.length" class="field-hint">
+                الأسماء من تصاميم العقود — يمكن الكتابة يدوياً أيضاً
+              </small>
             </div>
             <div class="field">
               <label>مبلغ المصرف العقاري</label>
               <InputNumber v-model="form.financedAmount" :min="0" />
             </div>
           </template>
+
           <div class="field">
             <label>عدد السنوات</label>
             <InputNumber v-model="form.years" :min="1" :max="40" show-buttons />
@@ -1446,100 +1981,110 @@ onMounted(async () => {
             <label>فترة الدفع (أشهر)</label>
             <InputNumber v-model="form.paymentIntervalMonths" :min="1" :max="12" show-buttons />
           </div>
-          <div class="field">
-            <label>تاريخ أول قسط</label>
-            <DatePicker v-model="firstInstallmentDateModel" date-format="yy-mm-dd" show-icon />
+
+          <div v-if="remainingIsZero" class="field full formula-box">
+            المتبقي صفر — تُحفظ السنوات والأشهر للعرض/الطباعة، ولن يُنشأ جدول أقساط ولن يظهر في الطباعة.
           </div>
 
-          <template v-if="isManualPricing">
-            <div v-if="computedInstallmentCount" class="field full schedule-block">
-              <div class="schedule-head">
-                <div>
-                  <strong>جدول تسعير الأقساط ({{ computedInstallmentCount }})</strong>
-                  <small>
-                    {{
-                      isPercentage
-                        ? 'عدّل النسبة لكل قسط — المجموع = الباقي ٪'
-                        : 'عدّل المبلغ لكل قسط — المجموع = الباقي'
-                    }}
-                  </small>
-                </div>
-                <Button
-                  label="إعادة التوزيع بالتساوي"
-                  size="small"
-                  severity="secondary"
-                  outlined
-                  @click="rebuildInstallmentSchedule"
-                />
-              </div>
-
-              <DataTable :value="installmentRows" size="small" striped-rows class="schedule-table">
-                <Column header="#" style="width: 56px">
-                  <template #body="{ data }">{{ data.index }}</template>
-                </Column>
-                <Column header="الشهر / الاستحقاق">
-                  <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
-                </Column>
-                <Column v-if="isPercentage" header="النسبة ٪">
-                  <template #body="{ data }">
-                    <InputNumber
-                      v-model="data.percent"
-                      :min="0"
-                      :max="100"
-                      :min-fraction-digits="0"
-                      :max-fraction-digits="2"
-                      @update:model-value="onInstallmentPercentEdit(data)"
-                    />
-                  </template>
-                </Column>
-                <Column header="السعر">
-                  <template #body="{ data }">
-                    <InputNumber
-                      v-if="!isPercentage"
-                      v-model="data.amount"
-                      :min="0"
-                      @update:model-value="onInstallmentAmountEdit(data)"
-                    />
-                    <span v-else>{{ formatMoney(data.amount) }}</span>
-                  </template>
-                </Column>
-              </DataTable>
-
-              <div
-                class="schedule-footer"
-                :class="{ ok: scheduleMatchesRemaining, bad: !scheduleMatchesRemaining }"
-              >
-                <span v-if="isPercentage">
-                  مجموع النسب: <strong>{{ scheduleSumPercent }}٪</strong>
-                  / الباقي: <strong>{{ remainingPercent }}٪</strong>
-                </span>
-                <span v-else>
-                  مجموع الأسعار: <strong>{{ formatMoney(scheduleSumAmount) }}</strong>
-                  / الباقي: <strong>{{ formatMoney(computedRemaining) }}</strong>
-                </span>
-                <strong>{{ scheduleMatchesRemaining ? 'مطابق ✓' : 'غير مطابق' }}</strong>
-              </div>
+          <template v-else-if="needsInstallmentSchedule">
+            <div class="field">
+              <label>تاريخ أول قسط</label>
+              <DatePicker v-model="firstInstallmentDateModel" date-format="yy-mm-dd" show-icon />
             </div>
-            <div
-              v-else-if="form.years && form.paymentIntervalMonths"
-              class="field full formula-box is-warn"
-            >
-              الأشهر الكلية لا تقبل القسمة على فترة الدفع — عدّل السنوات أو عدد الأشهر لإظهار الجدول.
+
+            <template v-if="isManualPricing">
+              <div v-if="computedInstallmentCount" class="field full schedule-block">
+                <div class="schedule-head">
+                  <div>
+                    <strong>جدول تسعير الأقساط ({{ computedInstallmentCount }})</strong>
+                    <small>
+                      {{
+                        isPercentage
+                          ? 'عدّل النسبة لكل قسط — المجموع = الباقي ٪'
+                          : 'عدّل المبلغ لكل قسط — المجموع = الباقي'
+                      }}
+                    </small>
+                  </div>
+                  <Button
+                    label="إعادة التوزيع بالتساوي"
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    @click="rebuildInstallmentSchedule"
+                  />
+                </div>
+
+                <DataTable :value="installmentRows" size="small" striped-rows class="schedule-table">
+                  <Column header="#" style="width: 56px" sortable>
+                    <template #body="{ data }">{{ data.index }}</template>
+                  </Column>
+                  <Column header="الشهر / الاستحقاق" sortable>
+                    <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
+                  </Column>
+                  <Column v-if="isPercentage" header="النسبة ٪" sortable>
+                    <template #body="{ data }">
+                      <InputNumber
+                        v-model="data.percent"
+                        :min="0"
+                        :max="100"
+                        :min-fraction-digits="0"
+                        :max-fraction-digits="2"
+                        @update:model-value="onInstallmentPercentEdit(data)"
+                      />
+                    </template>
+                  </Column>
+                  <Column header="السعر" sortable>
+                    <template #body="{ data }">
+                      <InputNumber
+                        v-if="!isPercentage"
+                        v-model="data.amount"
+                        :min="0"
+                        @update:model-value="onInstallmentAmountEdit(data)"
+                      />
+                      <span v-else>{{ formatMoney(data.amount) }}</span>
+                    </template>
+                  </Column>
+                </DataTable>
+
+                <div
+                  class="schedule-footer"
+                  :class="{ ok: scheduleMatchesRemaining, bad: !scheduleMatchesRemaining }"
+                >
+                  <span v-if="isPercentage">
+                    مجموع النسب: <strong>{{ scheduleSumPercent }}٪</strong>
+                    / الباقي: <strong>{{ remainingPercent }}٪</strong>
+                  </span>
+                  <span v-else>
+                    مجموع الأسعار: <strong>{{ formatMoney(scheduleSumAmount) }}</strong>
+                    / الباقي: <strong>{{ formatMoney(computedRemaining) }}</strong>
+                  </span>
+                  <strong>{{ scheduleMatchesRemaining ? 'مطابق ✓' : 'غير مطابق' }}</strong>
+                </div>
+              </div>
+              <div
+                v-else-if="form.years && form.paymentIntervalMonths"
+                class="field full formula-box is-warn"
+              >
+                الأشهر الكلية لا تقبل القسمة على فترة الدفع — عدّل السنوات أو عدد الأشهر لإظهار الجدول.
+              </div>
+            </template>
+
+            <div v-else class="field hint-box">
+              <span>عدد الأشهر: <strong>{{ computedMonths || '—' }}</strong></span>
+              <span>عدد الأقساط: <strong>{{ computedInstallmentCount || '—' }}</strong></span>
+              <span>قيمة القسط ≈ <strong>{{ formatMoney(computedInstallmentAmount) }}</strong></span>
+              <small>الأقساط تُقسَّم على المتبقي من الخطة</small>
+              <small v-if="form.years && form.paymentIntervalMonths && !computedInstallmentCount">
+                الأشهر لا تقبل القسمة على فترة الدفع
+              </small>
             </div>
           </template>
-
-          <div v-else class="field hint-box">
-            <span>عدد الأشهر: <strong>{{ computedMonths || '—' }}</strong></span>
-            <span>عدد الأقساط: <strong>{{ computedInstallmentCount || '—' }}</strong></span>
-            <span>قيمة القسط ≈ <strong>{{ formatMoney(computedInstallmentAmount) }}</strong></span>
-            <small>الأقساط تُقسَّم على المتبقي من الخطة</small>
-            <small v-if="form.years && form.paymentIntervalMonths && !computedInstallmentCount">
-              الأشهر لا تقبل القسمة على فترة الدفع
-            </small>
-          </div>
         </template>
       </div>
-      <p class="auto-hint">رقم العقد وتاريخه يُولَّدان تلقائياً من السيرفر عند الإنشاء.</p>
+      <p class="auto-hint">
+        عند الإنشاء يُولَّد رقم العقد تلقائياً حسب تسلسل تصميم العقود.
+        عند التعديل يمكن تغيير رقم العقد بشرط ألا يقل عن بداية التسلسل وألا يكون مستخدماً.
+      </p>
       <template #footer>
         <div class="dialog-actions">
           <Button label="إلغاء" severity="secondary" outlined @click="dialogVisible = false" />
@@ -1596,16 +2141,16 @@ onMounted(async () => {
         <div v-if="detailContract.installments?.length" class="installments-block">
           <h4>الأقساط على المتبقي ({{ detailContract.installments.length }})</h4>
           <DataTable :value="detailContract.installments" size="small" striped-rows>
-            <Column header="#">
+            <Column header="#" sortable>
               <template #body="{ index }">{{ index + 1 }}</template>
             </Column>
-            <Column header="الاستحقاق">
+            <Column header="الاستحقاق" sortable>
               <template #body="{ data }: { data: Installment }">{{ formatDate(data.dueDate) }}</template>
             </Column>
-            <Column header="المبلغ">
+            <Column header="المبلغ" sortable>
               <template #body="{ data }: { data: Installment }">{{ formatMoney(data.amount) }}</template>
             </Column>
-            <Column header="الحالة">
+            <Column header="الحالة" sortable>
               <template #body="{ data }: { data: Installment }">
                 {{ installmentStatusLabel(data.status, data.dueDate) }}
               </template>
@@ -1701,6 +2246,14 @@ onMounted(async () => {
   color: var(--muted);
 }
 
+.ok-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: #166534;
+  font-weight: 600;
+}
+
 .formula-box {
   display: flex;
   flex-direction: column;
@@ -1731,6 +2284,18 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.schedule-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .schedule-head {

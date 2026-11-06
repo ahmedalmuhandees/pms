@@ -45,7 +45,6 @@ export async function uploadContractDesignLogo(id: string, file: File) {
   const res = await apiClient.post<ApiResponse<ContractDesign>>(
     `/api/ContractDesigns/${id}/logo`,
     form,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
   )
   return unwrap(res)
 }
@@ -56,7 +55,6 @@ export async function uploadContractDesignTemplate(id: string, file: File) {
   const res = await apiClient.post<ApiResponse<ContractDesign>>(
     `/api/ContractDesigns/${id}/template`,
     form,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
   )
   return unwrap(res)
 }
@@ -72,7 +70,14 @@ export async function uploadContractDesignAsset(
   const res = await apiClient.post<ApiResponse<ContractDesign>>(
     `/api/ContractDesigns/${id}/assets/${kind}`,
     form,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return unwrap(res)
+}
+
+/** تعبئة نصوص/بنود دريم سيتي لهذا التصميم ومجمعه فقط */
+export async function applyDreamCityContent(id: string) {
+  const res = await apiClient.post<ApiResponse<ContractDesign>>(
+    `/api/ContractDesigns/${id}/apply-dream-city`,
   )
   return unwrap(res)
 }

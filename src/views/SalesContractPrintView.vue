@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
-import { downloadSalesContractPdf } from '@/api/salesContracts'
+import { downloadSalesContractPdf, type BankPdfOptions } from '@/api/salesContracts'
 import { getErrorMessage } from '@/api/client'
 
 const route = useRoute()
@@ -12,14 +12,33 @@ const loading = ref(true)
 const error = ref('')
 const pdfUrl = ref('')
 
+function readBankPdfOptions(contractId: string): BankPdfOptions | undefined {
+  const key = `bankPdf:${contractId}`
+  const raw = localStorage.getItem(key)
+  if (!raw) return undefined
+  try {
+    const parsed = JSON.parse(raw) as BankPdfOptions & { savedAt?: number }
+    localStorage.removeItem(key)
+    // تجاهل بيانات أقدم من 30 دقيقة
+    if (parsed.savedAt && Date.now() - parsed.savedAt > 30 * 60 * 1000) return undefined
+    if (!parsed?.paymentLines?.length) return undefined
+    return { paymentLines: parsed.paymentLines }
+  } catch {
+    localStorage.removeItem(key)
+    return undefined
+  }
+}
+
 async function load() {
   loading.value = true
   error.value = ''
   try {
     const id = String(route.params.id || '')
     if (!id) throw new Error('معرّف العقد غير موجود')
+    const variant = typeof route.query.variant === 'string' ? route.query.variant : undefined
+    const options = variant === 'bank' ? readBankPdfOptions(id) : undefined
 
-    const blob = await downloadSalesContractPdf(id)
+    const blob = await downloadSalesContractPdf(id, variant, options)
     if (blob.type && blob.type.includes('json')) {
       const text = await blob.text()
       const parsed = JSON.parse(text)
@@ -59,7 +78,7 @@ onUnmounted(() => {
   <div class="print-page">
     <div class="toolbar no-print">
       <div class="toolbar-title">
-        <strong>معاينة عقد البيع (PDF)</strong>
+        <strong>{{ route.query.variant === 'bank' ? 'معاينة طباعة المصرف العقاري' : 'معاينة عقد البيع (PDF)' }}</strong>
         <span>مطابق لقالب المجمع المرفوع</span>
       </div>
       <div class="toolbar-actions">

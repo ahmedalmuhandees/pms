@@ -10,6 +10,7 @@ import type {
 
 export interface CustomerParams extends PaginationParams {
   ComplexId?: string
+  HasContracts?: boolean
 }
 
 export async function getCustomers(params?: CustomerParams) {
@@ -35,4 +36,11 @@ export async function updateCustomer(id: string, payload: UpdateCustomerDto) {
 export async function deleteCustomer(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/Customers/${id}`)
   return unwrap(res)
+}
+
+export async function downloadCustomerAccountStatementPdf(id: string) {
+  const res = await apiClient.get(`/api/Customers/${id}/account-statement/pdf`, {
+    responseType: 'blob',
+  })
+  return res.data as Blob
 }

@@ -4,11 +4,11 @@ import type { ComplexMapLayoutMode, MapBlock, MapBuilding } from '@/types/comple
 export type Vec3 = [number, number, number]
 
 export const UNIT_STATUS_3D_COLORS: Record<number, string> = {
-  [UnitStatus.Available]: '#3ea57a',
-  [UnitStatus.Reserved]: '#d4893c',
-  [UnitStatus.Sold]: '#3d7ec4',
+  [UnitStatus.Available]: '#22c55e',
+  [UnitStatus.Reserved]: '#eab308',
+  [UnitStatus.Sold]: '#ef4444',
   [UnitStatus.Rented]: '#7b56b0',
-  [UnitStatus.Maintenance]: '#c45a5a',
+  [UnitStatus.Maintenance]: '#94a3b8',
 }
 
 const FACADES = ['#d7cbb8', '#cfc2ae', '#e3d6c4', '#c8bba8', '#ddd0bd']

@@ -5,6 +5,8 @@ import type {
   PagedResult,
   PaginationParams,
   Resident,
+  ResidentProfile,
+  ResidentStats,
   UpdateResidentDto,
 } from '@/types'
 
@@ -20,8 +22,45 @@ export async function getResidents(params?: ResidentParams) {
   return unwrap(res)
 }
 
+export async function getResidentStats(complexId?: string | null) {
+  const res = await apiClient.get<ApiResponse<ResidentStats>>('/api/Residents/stats', {
+    params: complexId ? { complexId } : undefined,
+  })
+  return unwrap(res)
+}
+
+export interface ResidentExportRow {
+  rowNumber: number
+  buildingCode: string | null
+  unitNumber: string | null
+  primaryResidentName: string
+  occupancyTypeLabel: string
+  nationalIdOrPassport: string | null
+  phone: string | null
+  email: string | null
+  totalOccupants: number
+  maleCount: number
+  femaleCount: number
+  occupancyDate: string | null
+  emergencyContactName: string | null
+  emergencyPhone: string | null
+  unitStatusLabel: string
+}
+
+export async function getResidentsExport(params?: ResidentParams) {
+  const res = await apiClient.get<ApiResponse<ResidentExportRow[]>>('/api/Residents/export', {
+    params,
+  })
+  return unwrap(res)
+}
+
 export async function getResident(id: string) {
   const res = await apiClient.get<ApiResponse<Resident>>(`/api/Residents/${id}`)
+  return unwrap(res)
+}
+
+export async function getResidentProfile(id: string) {
+  const res = await apiClient.get<ApiResponse<ResidentProfile>>(`/api/Residents/${id}/profile`)
   return unwrap(res)
 }
 
@@ -37,5 +76,21 @@ export async function updateResident(id: string, payload: UpdateResidentDto) {
 
 export async function deleteResident(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/Residents/${id}`)
+  return unwrap(res)
+}
+
+export async function revealResidentLoginCode(id: string, password: string) {
+  const res = await apiClient.post<ApiResponse<{ code: string }>>(
+    `/api/Residents/${id}/reveal-login-code`,
+    { password: password.trim() },
+  )
+  return unwrap(res)
+}
+
+export async function regenerateResidentLoginCode(id: string, password: string) {
+  const res = await apiClient.post<ApiResponse<{ code: string }>>(
+    `/api/Residents/${id}/regenerate-login-code`,
+    { password: password.trim() },
+  )
   return unwrap(res)
 }

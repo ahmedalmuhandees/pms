@@ -1,6 +1,6 @@
 const apiOrigin = import.meta.env.DEV
   ? ''
-  : import.meta.env.VITE_API_BASE_URL || 'https://pmsaas-api.execute-iq.com'
+  : import.meta.env.VITE_API_BASE_URL || 'https://apicomplex.solidcode-iq.com'
 
 /** يحوّل مسار wwwroot النسبي إلى رابط قابل للعرض */
 export function resolveMediaUrl(path?: string | null): string {

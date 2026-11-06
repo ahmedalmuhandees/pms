@@ -16,7 +16,6 @@ export async function uploadUnitDocument(unitId: string, file: File, title: stri
   const res = await apiClient.post<ApiResponse<UnitDocument>>(
     `/api/units/${unitId}/documents`,
     form,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
   )
   return unwrap(res)
 }

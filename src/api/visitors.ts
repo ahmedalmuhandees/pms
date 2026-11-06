@@ -4,6 +4,8 @@ import type {
   CreateVisitorDto,
   PagedResult,
   PaginationParams,
+  ScanVisitorPassDto,
+  ScanVisitorPassResult,
   UpdateVisitorDto,
   Visitor,
 } from '@/types'
@@ -35,5 +37,10 @@ export async function updateVisitor(id: string, payload: UpdateVisitorDto) {
 
 export async function deleteVisitor(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/Visitors/${id}`)
+  return unwrap(res)
+}
+
+export async function scanVisitorPass(payload: ScanVisitorPassDto) {
+  const res = await apiClient.post<ApiResponse<ScanVisitorPassResult>>('/api/Visitors/scan-pass', payload)
   return unwrap(res)
 }

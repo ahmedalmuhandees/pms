@@ -9,7 +9,10 @@ export function isStaleChunkError(error: unknown): boolean {
     message.includes('Failed to fetch dynamically imported module') ||
     message.includes('Importing a module script failed') ||
     message.includes('error loading dynamically imported module') ||
-    message.includes('Unable to preload CSS')
+    message.includes('Unable to preload CSS') ||
+    message.includes('Failed to load module script') ||
+    message.includes('Expected a JavaScript-or-Wasm module script') ||
+    message.includes('MIME type of "text/html"')
   )
 }
 
@@ -29,5 +32,11 @@ export function installStaleChunkReload(): void {
   window.addEventListener('vite:preloadError', (event) => {
     event.preventDefault()
     reloadOnStaleChunk()
+  })
+  window.addEventListener('unhandledrejection', (event) => {
+    if (isStaleChunkError(event.reason)) {
+      event.preventDefault()
+      reloadOnStaleChunk()
+    }
   })
 }

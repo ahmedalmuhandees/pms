@@ -67,7 +67,7 @@ const editDocTitle = ref('')
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const docInputRef = ref<HTMLInputElement | null>(null)
 
-const apiOrigin = import.meta.env.VITE_API_BASE_URL || 'https://pmsaas-api.execute-iq.com'
+const apiOrigin = import.meta.env.VITE_API_BASE_URL || 'https://apicomplex.solidcode-iq.com'
 
 function mediaUrl(path: string | null | undefined) {
   if (!path) return ''

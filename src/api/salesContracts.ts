@@ -42,9 +42,35 @@ export async function deleteSalesContract(id: string) {
   return unwrap(res)
 }
 
-export async function downloadSalesContractPdf(id: string) {
+export interface BankPdfPaymentLine {
+  label: string
+  amount: number
+}
+
+export interface BankPdfOptions {
+  paymentLines?: BankPdfPaymentLine[]
+}
+
+export async function downloadSalesContractPdf(
+  id: string,
+  variant?: 'bank' | string,
+  options?: BankPdfOptions,
+) {
+  if (options?.paymentLines?.length) {
+    const res = await apiClient.post(
+      `/api/SalesContracts/${id}/pdf`,
+      { paymentLines: options.paymentLines },
+      {
+        responseType: 'blob',
+        params: variant ? { variant } : undefined,
+      },
+    )
+    return res.data as Blob
+  }
+
   const res = await apiClient.get(`/api/SalesContracts/${id}/pdf`, {
     responseType: 'blob',
+    params: variant ? { variant } : undefined,
   })
   return res.data as Blob
 }

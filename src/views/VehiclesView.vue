@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
+import RememberedInput from '@/components/RememberedInput.vue'
 import Select from 'primevue/select'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
@@ -21,6 +21,7 @@ import { usePagedList } from '@/composables/usePagedList'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
@@ -31,7 +32,11 @@ const residentOptions = ref<{ id: string; label: string }[]>([])
 const residentFilter = ref<string | null>(null)
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Vehicle, VehicleParams>(getVehicles)
 
 const dialogVisible = ref(false)
@@ -143,7 +148,9 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث برقم اللوحة أو الموديل..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث برقم اللوحة أو الموديل..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
             v-model="residentFilter"
@@ -159,8 +166,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="6" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -172,12 +180,17 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="plateNumber" header="رقم اللوحة" />
-        <Column field="model" header="الموديل" />
-        <Column field="color" header="اللون" style="width: 110px" />
-        <Column field="parkingNumber" header="رقم الموقف" style="width: 120px" />
-        <Column header="المقيم">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="plateNumber" header="رقم اللوحة"  sortable />
+        <Column field="model" header="الموديل"  sortable />
+        <Column field="color" header="اللون" style="width: 110px"  sortable />
+        <Column field="parkingNumber" header="رقم الموقف" style="width: 120px"  sortable />
+        <Column header="المقيم" sortable>
           <template #body="{ data }">{{ residentLabel(data.residentId) }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -187,6 +200,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -198,19 +212,19 @@ onMounted(async () => {
       <div class="form-grid">
         <div class="field">
           <label>رقم اللوحة</label>
-          <InputText v-model="form.plateNumber" />
+          <RememberedInput v-model="form.plateNumber" memory-key="vehicle.plateNumber" />
         </div>
         <div class="field">
           <label>الموديل</label>
-          <InputText v-model="form.model" />
+          <RememberedInput v-model="form.model" memory-key="vehicle.model" />
         </div>
         <div class="field">
           <label>اللون</label>
-          <InputText v-model="form.color" />
+          <RememberedInput v-model="form.color" memory-key="vehicle.color" />
         </div>
         <div class="field">
           <label>رقم الموقف</label>
-          <InputText v-model="form.parkingNumber" />
+          <RememberedInput v-model="form.parkingNumber" memory-key="vehicle.parkingNumber" />
         </div>
         <div class="field full">
           <label>المقيم</label>

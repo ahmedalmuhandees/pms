@@ -7,6 +7,7 @@ import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/api/client'
 import { useNotify } from '@/composables/useNotify'
+import { pathToPageKey } from '@/utils/pagePermissions'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -28,8 +29,14 @@ async function onSubmit() {
   try {
     await auth.login({ email: form.email, password: form.password })
     notify.success('تم تسجيل الدخول بنجاح')
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
-    await router.replace(redirect)
+    const requested = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+    let target =
+      requested && requested !== '/login' ? requested : auth.homePath
+    const needed = pathToPageKey(target)
+    if (needed && !auth.canAccessPage(needed)) {
+      target = auth.homePath
+    }
+    await router.replace(target || '/')
   } catch (error) {
     notify.error(getErrorMessage(error))
   } finally {
@@ -240,6 +247,19 @@ async function onSubmit() {
 .submit {
   width: 100%;
   margin-top: 6px;
+}
+
+.alt-link {
+  display: inline-block;
+  margin-top: 18px;
+  color: var(--brand-mid);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.alt-link:hover {
+  text-decoration: underline;
 }
 
 .w-full {

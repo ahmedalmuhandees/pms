@@ -16,11 +16,25 @@ npm run dev
 
 ## الإعدادات
 
-ملف `.env`:
+- محلي (`npm run dev`) → `.env.development`  
+  `VITE_API_BASE_URL=https://pmsaas-api.execute-iq.com`
+- إنتاج (`npm run build`) → `.env.production`  
+  `VITE_API_BASE_URL=https://apicomplex.solidcode-iq.com`
 
+## النشر على سيرفر (SSH / Nginx)
+
+```bash
+npm run build
+rsync -avz --delete dist/ user@SERVER_IP:/var/www/html/
 ```
-VITE_API_BASE_URL=https://pmsaas-api.execute-iq.com
+
+إذا ظهر خطأ MIME `text/html` على ملفات `.js` فالسبب أن Nginx يُرجع `index.html` بدل الملف المفقود. استخدم إعداد `deploy/nginx.conf` ثم:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
 ```
+
+امسح كاش المتصفح بعد أول نشر.
 
 ## التقنيات
 

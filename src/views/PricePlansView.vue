@@ -44,8 +44,12 @@ import {
 } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
@@ -59,13 +63,17 @@ const floorMap = ref<Record<string, string>>({})
 const unitMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<PricePlan, PricePlanParams>(getPricePlans)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const firstInstallmentDateModel = ref<Date | null>(null)
 
 function emptyForm(): CreatePricePlanDto {
@@ -353,7 +361,7 @@ function openCreate() {
   suppressScheduleRebuild.value = true
   firstInstallmentDateModel.value = new Date()
   Object.assign(form, emptyForm(), {
-    complexId: complexFilter.value || complexes.value[0]?.id || '',
+    complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
   })
   suppressScheduleRebuild.value = false
   rebuildInstallmentSchedule()
@@ -554,9 +562,12 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -569,8 +580,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="8" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -582,20 +594,25 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="name" header="الاسم" />
-        <Column header="الهدف">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="name" header="الاسم"  sortable />
+        <Column header="الهدف" sortable>
           <template #body="{ data }">{{ targetLabel(data) }}</template>
         </Column>
-        <Column header="نوع التسعير" style="width: 100px">
+        <Column header="نوع التسعير" style="width: 100px" sortable>
           <template #body="{ data }">
             {{ labelOf(pricePlanPricingTypeOptions, data.pricingType) || '—' }}
           </template>
         </Column>
-        <Column header="سعر البيع" style="width: 120px">
+        <Column header="سعر البيع" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatMoney(data.sellingPrice) }}</template>
         </Column>
-        <Column header="المقدمة" style="width: 100px">
+        <Column header="المقدمة" style="width: 100px" sortable>
           <template #body="{ data }">
             {{
               data.pricingType === PricePlanPricingType.Percentage
@@ -604,7 +621,7 @@ onMounted(async () => {
             }}
           </template>
         </Column>
-        <Column header="الاستلام" style="width: 100px">
+        <Column header="الاستلام" style="width: 100px" sortable>
           <template #body="{ data }">
             {{
               data.pricingType === PricePlanPricingType.Percentage
@@ -613,13 +630,13 @@ onMounted(async () => {
             }}
           </template>
         </Column>
-        <Column header="السنوات" style="width: 80px">
+        <Column header="السنوات" style="width: 80px" sortable>
           <template #body="{ data }">{{ data.years ?? '—' }}</template>
         </Column>
-        <Column header="أول استلام" style="width: 110px">
+        <Column header="أول استلام" style="width: 110px" sortable>
           <template #body="{ data }">{{ formatDate(data.firstInstallmentDate) }}</template>
         </Column>
-        <Column header="المجمع">
+        <Column header="المجمع" sortable>
           <template #body="{ data }">{{ complexMap[data.complexId] || '—' }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -629,6 +646,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -646,6 +664,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"
@@ -832,13 +851,13 @@ onMounted(async () => {
           </div>
 
           <DataTable :value="installmentRows" size="small" striped-rows class="schedule-table">
-            <Column header="#" style="width: 56px">
+            <Column header="#" style="width: 56px" sortable>
               <template #body="{ data }">{{ data.index }}</template>
             </Column>
-            <Column header="الشهر / الاستحقاق">
+            <Column header="الشهر / الاستحقاق" sortable>
               <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
             </Column>
-            <Column v-if="isPercentage" header="النسبة ٪">
+            <Column v-if="isPercentage" header="النسبة ٪" sortable>
               <template #body="{ data }">
                 <InputNumber
                   v-model="data.percent"
@@ -850,7 +869,7 @@ onMounted(async () => {
                 />
               </template>
             </Column>
-            <Column header="السعر">
+            <Column header="السعر" sortable>
               <template #body="{ data }">
                 <InputNumber
                   v-if="!isPercentage"

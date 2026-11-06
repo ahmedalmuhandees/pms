@@ -50,13 +50,48 @@ export function resolveBuildingCode(names: string[] | undefined, buildingIndex: 
   return buildingIndex < 26 ? LATIN_LETTERS[buildingIndex]! : `B${buildingIndex + 1}`
 }
 
+/** أسماء افتراضية للبلوكات الأفقية: B1, B2, ... */
+export function defaultBlockNames(count: number, offset = 0): string[] {
+  const n = Math.max(1, count)
+  return Array.from({ length: n }, (_, i) => `B${offset + i + 1}`)
+}
+
+/** يزامن مصفوفة أسماء البلوكات مع العدد المدخل مع الإبقاء على ما أدخله المستخدم */
+export function syncBlockNames(
+  existing: string[] | undefined,
+  count: number,
+  offset = 0,
+): string[] {
+  const n = Math.max(1, Math.min(28, count))
+  const next = [...(existing ?? [])]
+  const defaults = defaultBlockNames(n, offset)
+  while (next.length < n) next.push(defaults[next.length]!)
+  return next.slice(0, n).map((name, i) => {
+    const trimmed = (name ?? '').trim()
+    return trimmed || defaults[i]!
+  })
+}
+
+export function resolveBlockName(names: string[] | undefined, blockIndex: number, offset = 0): string {
+  const raw = names?.[blockIndex]?.trim()
+  if (raw) return raw
+  return `B${offset + blockIndex + 1}`
+}
+
+/** آخر رقم في تسلسل الفلل داخل البلوك */
+export function unitNumberTo(from: number, villaCount: number): number {
+  const start = Math.max(0, Math.floor(from || 0))
+  const count = Math.max(1, villaCount)
+  return start + count - 1
+}
+
 export const MAX_UNITS_PER_FLOOR = 24
 export const MAX_UNITS_PER_SLOT = 8
 
-/** Villa number: اسم الفيلا/المبنى كبادئة */
-export function horizontalUnitNumber(blockIndex: number, villaSequence: number, buildingCode?: string): string {
-  if (buildingCode?.trim()) return buildingCode.trim()
-  return `${blockLatinCode(blockIndex)}${villaSequence + 1}`
+/** رقم الفيلا الأفقي: اسم البلوك - الرقم (مثل B6-203) */
+export function horizontalUnitNumber(blockName: string, absoluteNumber: number): string {
+  const name = blockName?.trim() || 'B1'
+  return `${name}-${absoluteNumber}`
 }
 
 /** Unit number like C-1-4 (بادئة المبنى - الطابق - التسلسل) */
@@ -74,20 +109,50 @@ export function unitNumber(
 
 export type SequenceDirection = 'clockwise' | 'counterclockwise' | 'manual'
 export type BuilderLayout = 'vertical' | 'horizontal'
+/**
+ * perFloor: يعيد الترقيم من 1 في كل طابق (A-0-1, A-0-2 ثم A-1-1, A-1-2)
+ * continuous: يستمر الترقيم عبر طوابق المبنى (A-0-1, A-0-2 ثم A-1-3, A-1-4)
+ */
+export type UnitNumberingMode = 'perFloor' | 'continuous'
 export type UnitCountByUi = Record<UnitUi, number>
+
+export const UNIT_NUMBERING_MODE_OPTIONS = [
+  {
+    value: 'perFloor' as const,
+    label: 'إعادة تصفير الأرقام عند كل طابق',
+    example: 'A1-0-1, A1-0-2 → A1-1-1, A1-1-2',
+  },
+  {
+    value: 'continuous' as const,
+    label: 'تسلسلي عبر الطوابق',
+    example: 'A1-0-1, A1-0-2 → A1-1-3, A1-1-4',
+  },
+]
 
 export interface StructureConfig {
   layoutMode: BuilderLayout
   blocksCount: number
   buildingsPerBlock: number
   /**
-   * أسماء/رموز المباني (أو الفلل) — طولها = buildingsPerBlock.
+   * أسماء/رموز المباني (عمودي) — طولها = buildingsPerBlock.
    * مثال: ["C","D"] → الوحدات C-1-1, D-1-1...
    */
   buildingNames: string[]
+  /**
+   * أسماء البلوكات (أفقي) — طولها = blocksCount.
+   * مثال: ["B6"] → الوحدات B6-203, B6-204...
+   */
+  blockNames: string[]
+  /** أول رقم وحدة/فيلا في التسلسل الأفقي داخل كل بلوك */
+  unitNumberFrom: number
   floorsPerBuilding: number
   unitsPerFloor: number
   startFloor: number
+  /**
+   * تسمية أعداد الوحدات في الهيكل العمودي.
+   * perFloor = إعادة تصفير عند كل طابق | continuous = تسلسلي عبر الطوابق
+   */
+  unitNumberingMode: UnitNumberingMode
   /** Continue naming after existing blocks (e.g. 2 → start at ج / C) */
   blockIndexOffset: number
   unitType: UnitType
@@ -417,6 +482,8 @@ export function buildStructurePreview(config: StructureConfig): StructurePreview
   const offset = config.blockIndexOffset || 0
   const layout = config.layoutMode ?? 'vertical'
   const buildingNames = syncBuildingNames(config.buildingNames, config.buildingsPerBlock)
+  const blockNames = syncBlockNames(config.blockNames, config.blocksCount, offset)
+  const sequenceFrom = Math.max(0, Math.floor(config.unitNumberFrom || 1))
 
   for (let b = 0; b < config.blocksCount; b++) {
     const blockIndex = offset + b
@@ -429,27 +496,38 @@ export function buildStructurePreview(config: StructureConfig): StructurePreview
         config.sequenceDirection ?? 'clockwise',
         config.horizontalPickedIndices ?? [],
       )
+      const blockName = resolveBlockName(blockNames, b, offset)
       for (let s = 0; s < order.length; s++) {
         const visualIndex = order[s]!
         const unitUi = street[visualIndex] ?? UnitUi.MiddleFront
         const sequenceNumber = s + 1
-        const code = resolveBuildingCode(buildingNames, visualIndex)
+        const absoluteNumber = sequenceFrom + s
+        // رقم الوحدة الكامل: B6-203 — اسم المبنى/الفيلا = الرقم فقط (203)
+        // حتى يبقى اسم البلوك في كيان البلوك ولا يُنسخ كاسم مبنى.
+        const unitCode = horizontalUnitNumber(blockName, absoluteNumber)
+        const villaName = String(absoluteNumber)
         const unit: PreviewUnit = {
-          unitNumber: horizontalUnitNumber(blockIndex, s, code),
+          unitNumber: unitCode,
           floorNumber: 1,
           unitUi,
           sequenceNumber,
           area: config.rowAreas?.[visualIndex] ?? config.area,
         }
         blockBuildings.push({
-          name: code,
+          name: villaName,
           floors: [{ floorNumber: 1, units: [unit] }],
         })
         buildings++
         floors++
         units++
       }
+      blocks.push({
+        name: blockName,
+        code: blockName,
+        buildings: blockBuildings,
+      })
     } else {
+      const continuous = (config.unitNumberingMode ?? 'perFloor') === 'continuous'
       for (let g = 0; g < config.buildingsPerBlock; g++) {
         const buildingFloors: PreviewFloor[] = []
         const cells = verticalFloorCells(config.unitsPerFloor)
@@ -459,13 +537,14 @@ export function buildStructurePreview(config: StructureConfig): StructurePreview
           config.verticalPickedIndices ?? [],
         )
         const code = resolveBuildingCode(buildingNames, g)
+        let runningSequence = 0
         for (let f = 0; f < config.floorsPerBuilding; f++) {
           const floorNumber = config.startFloor + f
           const floorUnits: PreviewUnit[] = []
           for (let s = 0; s < order.length; s++) {
             const visualIndex = order[s]!
             const cell = cells[visualIndex]!
-            const sequenceNumber = s + 1
+            const sequenceNumber = continuous ? ++runningSequence : s + 1
             floorUnits.push({
               unitNumber: unitNumber(blockIndex, g, floorNumber, sequenceNumber, code),
               floorNumber,
@@ -481,12 +560,12 @@ export function buildStructurePreview(config: StructureConfig): StructurePreview
         blockBuildings.push({ name: code, floors: buildingFloors })
         buildings++
       }
+      blocks.push({
+        name: blockArabicName(blockIndex),
+        code: blockLatinCode(blockIndex),
+        buildings: blockBuildings,
+      })
     }
-    blocks.push({
-      name: blockArabicName(blockIndex),
-      code: blockLatinCode(blockIndex),
-      buildings: blockBuildings,
-    })
   }
 
   return {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
+import RememberedInput from '@/components/RememberedInput.vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
@@ -40,6 +40,8 @@ const {
   search,
   load,
   onSearch,
+  setSortMode,
+  sortMode,
   onLazyPage,
 } = usePagedList(getComplexes)
 
@@ -154,6 +156,8 @@ onMounted(() => {
 
     <FilterBar
       v-model:search="search"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode"
       placeholder="ابحث عن مجمع بالاسم أو المدينة أو المطور..."
       @search="onSearch"
     />
@@ -239,23 +243,23 @@ onMounted(() => {
       <div class="form-grid">
         <div class="field">
           <label>الاسم بالعربي</label>
-          <InputText v-model="form.nameAr" />
+          <RememberedInput v-model="form.nameAr" memory-key="complex.nameAr" />
         </div>
         <div class="field">
           <label>الاسم بالإنجليزي</label>
-          <InputText v-model="form.name" />
+          <RememberedInput v-model="form.name" memory-key="complex.name" />
         </div>
         <div class="field">
           <label>المدينة</label>
-          <InputText v-model="form.city" />
+          <RememberedInput v-model="form.city" memory-key="complex.city" />
         </div>
         <div class="field">
           <label>المطور</label>
-          <InputText v-model="form.developer" />
+          <RememberedInput v-model="form.developer" memory-key="complex.developer" />
         </div>
         <div class="field full">
           <label>العنوان</label>
-          <InputText v-model="form.address" />
+          <RememberedInput v-model="form.address" memory-key="complex.address" />
         </div>
         <div class="field">
           <label>خط العرض</label>

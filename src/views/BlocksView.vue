@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
+import RememberedInput from '@/components/RememberedInput.vue'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import Dialog from 'primevue/dialog'
@@ -17,6 +17,7 @@ import { asSelectOptions } from '@/utils/enums'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
@@ -27,13 +28,17 @@ const complexes = ref<Complex[]>([])
 const complexMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Block, BlockParams>(getBlocks)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const form = reactive<CreateBlockDto>({ name: '', description: '', complexId: '' })
 
 const complexOptions = computed(() =>
@@ -53,7 +58,7 @@ function openCreate() {
   Object.assign(form, {
     name: '',
     description: '',
-    complexId: complexFilter.value || complexes.value[0]?.id || '',
+    complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
   })
   dialogVisible.value = true
 }
@@ -117,9 +122,12 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث عن بلوك بالاسم أو الوصف..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث عن بلوك بالاسم أو الوصف..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -133,8 +141,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="4" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -146,10 +155,15 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="name" header="الاسم" />
-        <Column field="description" header="الوصف" />
-        <Column header="المجمع">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="name" header="الاسم"  sortable />
+        <Column field="description" header="الوصف"  sortable />
+        <Column header="المجمع" sortable>
           <template #body="{ data }">{{ complexMap[data.complexId] || data.complexId }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -159,6 +173,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -171,6 +186,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"
@@ -182,7 +198,7 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label>الاسم</label>
-          <InputText v-model="form.name" />
+          <RememberedInput v-model="form.name" memory-key="block.name" />
         </div>
         <div class="field">
           <label>الوصف</label>

@@ -2,7 +2,11 @@ import {
   UnitStatus,
   UnitType,
   MaritalStatus,
+  EducationLevel,
   ResidentStatus,
+  OccupancyType,
+  UnitResidentPhase,
+  FamilyRelation,
   MaintenanceCategory,
   ReservationStatus,
   ContractStatus,
@@ -17,6 +21,9 @@ import {
   InvoiceType,
   ComplexLayoutType,
   UnitUi,
+  ServiceTypeName,
+  ServiceBillingMode,
+  MeterReadingSource,
 } from '@/types'
 
 export const unitStatusOptions = [
@@ -46,10 +53,23 @@ export const unitUiOptions = [
 ]
 
 export const maritalStatusOptions = [
+  { value: MaritalStatus.None, label: 'لا يوجد' },
   { value: MaritalStatus.Single, label: 'أعزب' },
   { value: MaritalStatus.Married, label: 'متزوج' },
   { value: MaritalStatus.Divorced, label: 'مطلق' },
   { value: MaritalStatus.Widowed, label: 'أرمل' },
+]
+
+export const educationLevelOptions = [
+  { value: EducationLevel.NoCertificate, label: 'دون شهادة دراسية' },
+  { value: EducationLevel.Primary, label: 'الشهادة الابتدائية' },
+  { value: EducationLevel.Intermediate, label: 'الشهادة المتوسطة' },
+  { value: EducationLevel.Preparatory, label: 'الشهادة الإعدادية' },
+  { value: EducationLevel.Diploma, label: 'شهادة الدبلوم' },
+  { value: EducationLevel.Bachelor, label: 'شهادة البكالوريوس' },
+  { value: EducationLevel.HigherDiploma, label: 'شهادة الدبلوم العالي' },
+  { value: EducationLevel.Master, label: 'شهادة الماجستير' },
+  { value: EducationLevel.Doctorate, label: 'شهادة الدكتوراه' },
 ]
 
 export const complexStatusOptions = [
@@ -64,10 +84,72 @@ export const complexLayoutTypeOptions = [
   { value: ComplexLayoutType.HorizontalVertical, label: 'أفقي - عمودي' },
 ]
 
+export const serviceTypeNameOptions = [
+  { value: ServiceTypeName.Electricity, label: 'كهرباء' },
+  { value: ServiceTypeName.Water, label: 'مياه' },
+  { value: ServiceTypeName.Internet, label: 'إنترنت' },
+  { value: ServiceTypeName.Gas, label: 'غاز' },
+  { value: ServiceTypeName.Security, label: 'حراسة' },
+  { value: ServiceTypeName.Cleaning, label: 'نظافة' },
+  { value: ServiceTypeName.Landscape, label: 'حدائق' },
+  { value: ServiceTypeName.Elevator, label: 'صيانة المصاعد' },
+  { value: ServiceTypeName.CorridorLighting, label: 'إنارة الممرات' },
+  { value: ServiceTypeName.Other, label: 'أخرى' },
+]
+
+export const serviceBillingModeOptions = [
+  { value: ServiceBillingMode.Fixed, label: 'ثابتة' },
+  { value: ServiceBillingMode.Metered, label: 'حسب العداد' },
+]
+
+export const meterReadingSourceOptions = [
+  { value: MeterReadingSource.Manual, label: 'يدوي (Manual)' },
+  { value: MeterReadingSource.Api, label: 'تلقائي (API)' },
+]
+
+export const monthOptions = [
+  { value: 1, label: 'يناير' },
+  { value: 2, label: 'فبراير' },
+  { value: 3, label: 'مارس' },
+  { value: 4, label: 'أبريل' },
+  { value: 5, label: 'مايو' },
+  { value: 6, label: 'يونيو' },
+  { value: 7, label: 'يوليو' },
+  { value: 8, label: 'أغسطس' },
+  { value: 9, label: 'سبتمبر' },
+  { value: 10, label: 'أكتوبر' },
+  { value: 11, label: 'نوفمبر' },
+  { value: 12, label: 'ديسمبر' },
+]
+
 export const residentStatusOptions = [
   { value: ResidentStatus.Active, label: 'ساكن حالياً' },
   { value: ResidentStatus.MovedOut, label: 'غادر' },
   { value: ResidentStatus.Evicted, label: 'تم إخلاؤه' },
+]
+
+export const occupancyTypeOptions = [
+  { value: OccupancyType.Owner, label: 'مالك' },
+  { value: OccupancyType.Tenant, label: 'مستأجر' },
+]
+
+export const occupancyFormTypeOptions = [
+  { value: OccupancyType.Owner, label: 'سكن مباشر' },
+  { value: OccupancyType.Tenant, label: 'مستأجر' },
+]
+
+export const unitResidentPhaseOptions = [
+  { value: UnitResidentPhase.Available, label: 'متاح' },
+  { value: UnitResidentPhase.KeyHandedOver, label: 'تسليم مفتاح' },
+  { value: UnitResidentPhase.Occupied, label: 'ساكن' },
+]
+
+export const familyRelationOptions = [
+  { value: FamilyRelation.Spouse, label: 'زوج/زوجة' },
+  { value: FamilyRelation.Parent, label: 'أب/أم' },
+  { value: FamilyRelation.Sibling, label: 'أخ/أخت' },
+  { value: FamilyRelation.Child, label: 'ابن/ابنة' },
+  { value: FamilyRelation.Other, label: 'أخرى' },
 ]
 
 export const maintenanceCategoryOptions = [
@@ -143,6 +225,25 @@ export const installmentStatusOptions = [
 ]
 
 /** Pending قبل تاريخ الاستحقاق = غير مدفوع، وعند/بعد التاريخ = مستحقة */
+
+export function installmentOrdinalLabel(index: number): string {
+  const map: Record<number, string> = {
+    1: 'الأولى',
+    2: 'الثانية',
+    3: 'الثالثة',
+    4: 'الرابعة',
+    5: 'الخامسة',
+    6: 'السادسة',
+    7: 'السابعة',
+    8: 'الثامنة',
+    9: 'التاسعة',
+    10: 'العاشرة',
+    11: 'الحادية عشرة',
+    12: 'الثانية عشرة',
+  }
+  return `الدفعة ${map[index] ?? String(index)}`
+}
+
 export function installmentStatusLabel(
   status: number | null | undefined,
   dueDate?: string | null,
@@ -195,10 +296,16 @@ export function isInstallmentNotYetDue(
 
 export const paymentMethodOptions = [
   { value: PaymentMethod.Cash, label: 'نقداً' },
-  { value: PaymentMethod.BankTransfer, label: 'تحويل بنكي' },
+  { value: PaymentMethod.Bank, label: 'إيداع بنكي' },
+  { value: PaymentMethod.Transfer, label: 'تحويل بنكي' },
   { value: PaymentMethod.Cheque, label: 'شيك' },
   { value: PaymentMethod.Card, label: 'بطاقة' },
-  { value: PaymentMethod.Online, label: 'إلكتروني' },
+]
+
+/** طرق سداد فواتير الخدمات الشهرية في بروفايل الساكن */
+export const serviceBillPaymentOptions = [
+  { value: PaymentMethod.Cash, label: 'كاش' },
+  { value: PaymentMethod.Card, label: 'ماستر' },
 ]
 
 export const invoiceStatusOptions = [

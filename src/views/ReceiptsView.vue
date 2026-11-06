@@ -23,6 +23,7 @@ import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { asSelectOptions, formatDate, formatMoney } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
@@ -32,7 +33,11 @@ const payments = ref<Payment[]>([])
 const paymentMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Receipt, ReceiptParams>(getReceipts)
 
 const dialogVisible = ref(false)
@@ -151,7 +156,9 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث برقم الوصل..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث برقم الوصل..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
             v-model="paymentFilter"
@@ -167,8 +174,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="5" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -180,15 +188,20 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="receiptNumber" header="رقم الوصل" style="width: 140px" />
-        <Column header="التاريخ" style="width: 120px">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="receiptNumber" header="رقم الوصل" style="width: 140px"  sortable />
+        <Column header="التاريخ" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatDate(data.date) }}</template>
         </Column>
-        <Column header="المبلغ" style="width: 120px">
+        <Column header="المبلغ" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
         </Column>
-        <Column header="الدفعة">
+        <Column header="الدفعة" sortable>
           <template #body="{ data }">{{ paymentMap[data.paymentId] || data.paymentId.slice(0, 8) }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -198,6 +211,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog

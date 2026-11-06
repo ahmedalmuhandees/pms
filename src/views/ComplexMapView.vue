@@ -5,6 +5,7 @@ import Button from 'primevue/button'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
+import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
 import ProgressSpinner from 'primevue/progressspinner'
 import type { Complex, CreateReservationDto, Customer, Unit, UpdateUnitDto } from '@/types'
@@ -30,6 +31,9 @@ import {
 } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import Complex3DViewer from '@/components/complex3d/Complex3DViewer.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const router = useRouter()
@@ -40,12 +44,14 @@ const mapUnitStatusOptions = unitStatusOptions.filter(
 )
 
 const complexes = ref<Complex[]>([])
-const selectedComplexId = ref<string | null>(null)
+const selectedComplexId = ref<string | null>(auth.scopedComplexId)
 const loadingComplexes = ref(false)
 const loadingMap = ref(false)
 const mapBlocks = ref<MapBlock[]>([])
 const selectedUnit = ref<Unit | null>(null)
 const statusFilter = ref<number | null>(null)
+const blockFilter = ref<string | null>(null)
+const buildingFilter = ref<string | null>(null)
 
 const customers = ref<Customer[]>([])
 const loadingCustomers = ref(false)
@@ -63,6 +69,7 @@ const reservationForm = reactive<CreateReservationDto>({
   unitId: '',
   customerId: '',
   complexId: '',
+  notes: '',
 })
 const selectedUnitStatus = ref<UnitStatus>(UnitStatus.Reserved)
 const show3d = ref(false)
@@ -92,6 +99,33 @@ const customerOptions = computed(() =>
   ),
 )
 
+const blockOptions = computed(() =>
+  asSelectOptions(
+    mapBlocks.value.map((b) => b.block),
+    (b) => b.name || b.id,
+  ),
+)
+
+const buildingOptions = computed(() => {
+  const source = blockFilter.value
+    ? mapBlocks.value.filter((b) => b.block.id === blockFilter.value)
+    : mapBlocks.value
+  const buildings = source.flatMap((b) => b.buildings.map((x) => x.building))
+  return asSelectOptions(buildings, (b) => b.name || b.id)
+})
+
+const filteredMapBlocks = computed(() => {
+  return mapBlocks.value
+    .filter((blockMap) => !blockFilter.value || blockMap.block.id === blockFilter.value)
+    .map((blockMap) => ({
+      ...blockMap,
+      buildings: blockMap.buildings.filter(
+        (buildingMap) => !buildingFilter.value || buildingMap.building.id === buildingFilter.value,
+      ),
+    }))
+    .filter((blockMap) => blockMap.buildings.length > 0 || (!blockFilter.value && !buildingFilter.value))
+})
+
 const canReserve = computed(() => {
   const unit = selectedUnit.value
   if (!unit) return false
@@ -102,17 +136,17 @@ const totals = computed(() => {
   let buildings = 0
   let floors = 0
   let units = 0
-  for (const block of mapBlocks.value) {
+  for (const block of filteredMapBlocks.value) {
     for (const building of block.buildings) {
       buildings++
       for (const floor of building.floors) {
         floors++
-        units += floor.units.length
+        units += floor.units.filter(unitMatchesFilter).length
       }
     }
   }
   return {
-    blocks: mapBlocks.value.length,
+    blocks: filteredMapBlocks.value.length,
     buildings,
     floors,
     units,
@@ -237,7 +271,9 @@ async function loadComplexes() {
   try {
     const result = await getComplexes({ Page: 1, PageSize: 200 })
     complexes.value = result.items ?? []
-    if (complexes.value[0] && !selectedComplexId.value) {
+    if (auth.scopedComplexId) {
+      selectedComplexId.value = auth.scopedComplexId
+    } else if (complexes.value[0] && !selectedComplexId.value) {
       selectedComplexId.value = complexes.value[0].id
     }
   } catch (error) {
@@ -334,7 +370,7 @@ function open3dView() {
     notify.warning('انتظر حتى يكتمل تحميل الخريطة')
     return
   }
-  if (!mapBlocks.value.length) {
+  if (!filteredMapBlocks.value.length) {
     notify.warning('لا يوجد هيكل عقاري لعرضه ثلاثياً')
     return
   }
@@ -371,6 +407,7 @@ async function openReservationDialog() {
     unitId: unit.id,
     customerId: '',
     complexId: unit.complexId || selectedComplexId.value || '',
+    notes: '',
   })
 
   reservationDialogVisible.value = true
@@ -440,7 +477,15 @@ watch(reservationDialogVisible, (visible) => {
 })
 
 watch(selectedComplexId, () => {
+  blockFilter.value = null
+  buildingFilter.value = null
   void loadMap()
+})
+
+watch(blockFilter, () => {
+  if (!buildingFilter.value) return
+  const stillValid = buildingOptions.value.some((b) => b.id === buildingFilter.value)
+  if (!stillValid) buildingFilter.value = null
 })
 
 onMounted(async () => {
@@ -458,6 +503,7 @@ onMounted(async () => {
       <template #actions>
         <div class="toolbar">
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="selectedComplexId"
             :options="complexOptions"
             option-label="label"
@@ -468,6 +514,32 @@ onMounted(async () => {
             checkmark
             append-to="body"
             class="toolbar__select"
+          />
+          <Select
+            v-model="blockFilter"
+            :options="blockOptions"
+            option-label="label"
+            option-value="id"
+            placeholder="كل البلوكات"
+            show-clear
+            filter
+            checkmark
+            append-to="body"
+            class="toolbar__select toolbar__select--sm"
+            :disabled="!mapBlocks.length"
+          />
+          <Select
+            v-model="buildingFilter"
+            :options="buildingOptions"
+            option-label="label"
+            option-value="id"
+            :placeholder="layoutMode === 'horizontal' ? 'كل الفلل' : 'كل المباني'"
+            show-clear
+            filter
+            checkmark
+            append-to="body"
+            class="toolbar__select toolbar__select--sm"
+            :disabled="!buildingOptions.length"
           />
           <Select
             v-model="statusFilter"
@@ -483,7 +555,7 @@ onMounted(async () => {
           <Button
             label="عرض المجمع 3D"
             icon="pi pi-box"
-            :disabled="!selectedComplexId || loadingMap || mapBlocks.length === 0"
+            :disabled="!selectedComplexId || loadingMap || filteredMapBlocks.length === 0"
             @click="open3dView"
           />
         </div>
@@ -524,9 +596,13 @@ onMounted(async () => {
       لا يوجد هيكل عقاري لهذا المجمع بعد
     </div>
 
+    <div v-else-if="filteredMapBlocks.length === 0" class="empty-state">
+      لا توجد نتائج مطابقة للفلترة الحالية
+    </div>
+
     <div v-else class="map-layout">
       <div class="map-canvas" :class="`layout-${layoutMode}`">
-        <section v-for="blockMap in mapBlocks" :key="blockMap.block.id" class="block-zone">
+        <section v-for="blockMap in filteredMapBlocks" :key="blockMap.block.id" class="block-zone">
           <header class="block-zone__head">
             <i class="pi pi-th-large" />
             <div>
@@ -809,6 +885,15 @@ onMounted(async () => {
             append-to="body"
           />
         </div>
+        <div class="field full">
+          <label>الملاحظات</label>
+          <Textarea
+            v-model="reservationForm.notes"
+            rows="3"
+            placeholder="أضف ملاحظات الحجز (اختياري)"
+            auto-resize
+          />
+        </div>
       </div>
 
       <template #footer>
@@ -832,7 +917,7 @@ onMounted(async () => {
     <Teleport to="body">
       <Complex3DViewer
         v-if="show3d"
-        :blocks="mapBlocks"
+        :blocks="filteredMapBlocks"
         :layout-mode="layoutMode"
         :complex-name="selectedComplex?.nameAr || selectedComplex?.name || 'المجمع'"
         :selected-unit="selectedUnit"
@@ -907,25 +992,25 @@ onMounted(async () => {
 .legend__item.is-available,
 .unit-cell.is-available,
 .status-pill.is-available {
-  background: #e8f5f0;
-  color: #1f7a5c;
-  border-color: color-mix(in srgb, #1f7a5c 20%, transparent);
+  background: #dcfce7;
+  color: #15803d;
+  border-color: color-mix(in srgb, #16a34a 28%, transparent);
 }
 
 .legend__item.is-reserved,
 .unit-cell.is-reserved,
 .status-pill.is-reserved {
-  background: #f8efe6;
-  color: #c46b2b;
-  border-color: color-mix(in srgb, #c46b2b 28%, transparent);
+  background: #fef9c3;
+  color: #a16207;
+  border-color: color-mix(in srgb, #eab308 35%, transparent);
 }
 
 .legend__item.is-sold,
 .unit-cell.is-sold,
 .status-pill.is-sold {
-  background: #e4edf8;
-  color: #2b6cb0;
-  border-color: color-mix(in srgb, #2b6cb0 28%, transparent);
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: color-mix(in srgb, #ef4444 30%, transparent);
 }
 
 .legend__item.is-rented,

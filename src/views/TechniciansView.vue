@@ -22,8 +22,12 @@ import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { asSelectOptions, labelOf, maintenanceCategoryOptions } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
@@ -31,13 +35,17 @@ const complexes = ref<Complex[]>([])
 const complexMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Technician, TechnicianParams>(getTechnicians)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const departmentFilter = ref<number | null>(null)
 
 const form = reactive<CreateTechnicianDto>({
@@ -65,7 +73,7 @@ function openCreate() {
     name: '',
     phone: '',
     department: MaintenanceCategory.Electrical,
-    complexId: complexFilter.value || complexes.value[0]?.id || '',
+    complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
   })
   dialogVisible.value = true
 }
@@ -134,9 +142,12 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث بالاسم أو الهاتف..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث بالاسم أو الهاتف..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -158,8 +169,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="5" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -171,13 +183,18 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="name" header="الاسم" />
-        <Column field="phone" header="الهاتف" style="width: 140px" />
-        <Column header="التخصص" style="width: 140px">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="name" header="الاسم"  sortable />
+        <Column field="phone" header="الهاتف" style="width: 140px"  sortable />
+        <Column header="التخصص" style="width: 140px" sortable>
           <template #body="{ data }">{{ labelOf(maintenanceCategoryOptions, data.department) }}</template>
         </Column>
-        <Column header="المجمع">
+        <Column header="المجمع" sortable>
           <template #body="{ data }">{{ complexMap[data.complexId] || '—' }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -187,6 +204,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -219,6 +237,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"

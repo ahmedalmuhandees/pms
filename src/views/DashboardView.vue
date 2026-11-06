@@ -18,9 +18,7 @@ import { getErrorMessage } from '@/api/client'
 import { useNotify } from '@/composables/useNotify'
 import {
   contractStatusOptions,
-  formatMoney,
   installmentStatusOptions,
-  labelOf,
   unitStatusOptions,
 } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
@@ -88,6 +86,44 @@ const reservations = ref<Reservation[]>([])
 const contractsTotal = ref(0)
 const installmentsTotal = ref(0)
 const reservationsTotal = ref(0)
+const unitStatusTotals = ref<Record<number, number>>({})
+const contractStatusTotals = ref<Record<number, number>>({})
+const completedContractsCount = ref(0)
+
+async function fetchAllPages<T>(
+  fetcher: (params: { Page: number; PageSize: number }) => Promise<{
+    items?: T[] | null
+    totalCount?: number
+  }>,
+  pageSize = 500,
+) {
+  const first = await fetcher({ Page: 1, PageSize: pageSize })
+  const total = first.totalCount ?? first.items?.length ?? 0
+  const items = [...(first.items ?? [])]
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  if (pages > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, index) =>
+        fetcher({ Page: index + 2, PageSize: pageSize }),
+      ),
+    )
+    for (const page of rest) items.push(...(page.items ?? []))
+  }
+  return { items, totalCount: total }
+}
+
+async function countByStatus(
+  statuses: readonly number[],
+  fetcher: (status: number) => Promise<{ totalCount?: number; items?: unknown[] | null }>,
+) {
+  const entries = await Promise.all(
+    statuses.map(async (status) => {
+      const page = await fetcher(status)
+      return [status, page.totalCount ?? page.items?.length ?? 0] as const
+    }),
+  )
+  return Object.fromEntries(entries) as Record<number, number>
+}
 
 function formatCount(value: number) {
   return new Intl.NumberFormat('en-US').format(value)
@@ -111,7 +147,14 @@ function go(path: string) {
   void router.push(path)
 }
 
-const unitStatusCounts = computed(() => countBy(units.value, (u) => u.status))
+const unitStatusCounts = computed(() => {
+  const map = new Map<number, number>()
+  for (const [key, value] of Object.entries(unitStatusTotals.value)) {
+    map.set(Number(key), value)
+  }
+  if (map.size) return map
+  return countBy(units.value, (u) => u.status)
+})
 
 const unitsAvailable = computed(() => unitStatusCounts.value.get(UnitStatus.Available) || 0)
 const unitsSold = computed(() => unitStatusCounts.value.get(UnitStatus.Sold) || 0)
@@ -133,9 +176,7 @@ const occupancyRate = computed(() => {
   return (taken / total) * 100
 })
 
-const activeContracts = computed(
-  () => contracts.value.filter((c) => c.contractStatus === ContractStatus.Active).length,
-)
+const completedContracts = computed(() => completedContractsCount.value)
 
 const overdueInstallments = computed(
   () => installments.value.filter((i) => i.status === InstallmentStatus.Overdue).length,
@@ -174,8 +215,8 @@ const kpiCards = computed(() => [
   },
   {
     key: 'contracts',
-    label: 'عقود سارية',
-    value: formatCount(activeContracts.value),
+    label: 'العقود المكتملة',
+    value: formatCount(completedContracts.value),
     hint: `${formatCount(contractsTotal.value)} عقد إجمالي`,
     icon: 'pi pi-file',
     tone: 'ocean',
@@ -298,13 +339,15 @@ const installmentChart = computed<ChartData>(() => {
 })
 
 const contractStatusChart = computed<ChartData>(() => {
-  const counts = countBy(contracts.value, (c) => c.contractStatus)
+  const fallback = countBy(contracts.value, (c) => Number(c.contractStatus))
   return {
     labels: contractStatusOptions.map((o) => o.label),
     datasets: [
       {
         label: 'العقود',
-        data: contractStatusOptions.map((o) => counts.get(o.value) || 0),
+        data: contractStatusOptions.map(
+          (o) => contractStatusTotals.value[o.value] ?? fallback.get(o.value) ?? 0,
+        ),
         backgroundColor: contractStatusOptions.map(
           (o) => CONTRACT_STATUS_COLORS[o.value] || COLORS.mist,
         ),
@@ -351,12 +394,6 @@ const doughnutOptions = {
   },
 }
 
-const recentContracts = computed(() =>
-  [...contracts.value]
-    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
-    .slice(0, 6),
-)
-
 const quickLinks = [
   { label: 'عقد جديد', icon: 'pi pi-plus', to: '/sales-contracts', tone: 'teal' },
   { label: 'الوحدات', icon: 'pi pi-key', to: '/units', tone: 'copper' },
@@ -366,30 +403,64 @@ const quickLinks = [
   { label: 'خريطة المجمع', icon: 'pi pi-map', to: '/complex-map', tone: 'forest' },
 ]
 
-function contractStatusLabel(status: number) {
-  return labelOf(contractStatusOptions, status)
-}
-
 onMounted(async () => {
   loading.value = true
   try {
-    const [statistics, unitsPage, contractsPage, installmentsPage, reservationsPage] =
-      await Promise.all([
-        getStatistics(),
-        getUnits({ Page: 1, PageSize: 500 }),
-        getSalesContracts({ Page: 1, PageSize: 500 }),
-        getInstallments({ Page: 1, PageSize: 500 }),
-        getReservations({ Page: 1, PageSize: 300 }),
-      ])
+    const unitStatuses = unitStatusOptions.map((o) => o.value)
+    const contractStatuses = contractStatusOptions.map((o) => o.value)
+
+    const [
+      statistics,
+      unitsPage,
+      contractsPage,
+      installmentsPage,
+      reservationsPage,
+      unitTotals,
+      contractTotals,
+    ] = await Promise.all([
+      getStatistics(),
+      fetchAllPages<Unit>((params) => getUnits(params)),
+      fetchAllPages<SalesContract>((params) => getSalesContracts(params)),
+      getInstallments({ Page: 1, PageSize: 500 }),
+      getReservations({ Page: 1, PageSize: 300 }),
+      countByStatus(unitStatuses, (status) =>
+        getUnits({ Page: 1, PageSize: 1, Status: String(status) }),
+      ),
+      countByStatus(contractStatuses, (status) =>
+        getSalesContracts({ Page: 1, PageSize: 1, ContractStatus: status }),
+      ),
+    ])
 
     stats.value = statistics
-    units.value = unitsPage.items || []
-    contracts.value = contractsPage.items || []
+    units.value = unitsPage.items
+    contracts.value = contractsPage.items
     installments.value = installmentsPage.items || []
     reservations.value = reservationsPage.items || []
     contractsTotal.value = contractsPage.totalCount || contracts.value.length
     installmentsTotal.value = installmentsPage.totalCount || installments.value.length
     reservationsTotal.value = reservationsPage.totalCount || reservations.value.length
+
+    // Prefer API status totals; fall back to full local counts when filters are unsupported.
+    const localUnitCounts = countBy(unitsPage.items, (u) => u.status)
+    const localContractCounts = countBy(contractsPage.items, (c) => Number(c.contractStatus))
+    const unitTotalsSum = Object.values(unitTotals).reduce((sum, n) => sum + n, 0)
+    const contractTotalsSum = Object.values(contractTotals).reduce((sum, n) => sum + n, 0)
+
+    unitStatusTotals.value =
+      unitTotalsSum > 0 && unitTotalsSum <= (statistics.unitsCount || unitTotalsSum) * 1.01
+        ? unitTotals
+        : Object.fromEntries(localUnitCounts)
+
+    contractStatusTotals.value =
+      contractTotalsSum > 0 &&
+      contractTotalsSum <= (contractsPage.totalCount || contractTotalsSum) * 1.01
+        ? contractTotals
+        : Object.fromEntries(localContractCounts)
+
+    completedContractsCount.value =
+      contractStatusTotals.value[ContractStatus.Completed] ??
+      contractsPage.items.filter((c) => Number(c.contractStatus) === ContractStatus.Completed)
+        .length
   } catch (error) {
     notify.error(getErrorMessage(error))
   } finally {
@@ -419,8 +490,8 @@ onMounted(async () => {
           <p class="hero__text">
             نسبة الإشغال
             <strong>{{ formatPct(occupancyRate) }}</strong>
-            · العقود السارية
-            <strong>{{ formatCount(activeContracts) }}</strong>
+            · العقود المكتملة
+            <strong>{{ formatCount(completedContracts) }}</strong>
             · الأقساط المتأخرة
             <strong>{{ formatCount(overdueInstallments) }}</strong>
           </p>
@@ -519,36 +590,6 @@ onMounted(async () => {
             </div>
           </header>
           <DashboardChart type="bar" :data="peopleChart" :height="260" />
-        </article>
-
-        <article class="panel">
-          <header class="panel__head">
-            <div>
-              <h3>أحدث العقود</h3>
-              <p>آخر العقود المسجّلة في النظام</p>
-            </div>
-            <button type="button" class="panel__link" @click="go('/sales-contracts')">الكل</button>
-          </header>
-
-          <div v-if="recentContracts.length" class="recent-list">
-            <button
-              v-for="row in recentContracts"
-              :key="row.id"
-              type="button"
-              class="recent-row"
-              @click="go('/sales-contracts')"
-            >
-              <div class="recent-row__main">
-                <strong>{{ row.contractNumber || '—' }}</strong>
-                <span>{{ formatMoney(row.sellingPrice) }}</span>
-              </div>
-              <div class="recent-row__meta">
-                <span class="badge">{{ contractStatusLabel(row.contractStatus) }}</span>
-                <span class="muted">{{ row.contractDate?.slice(0, 10) || '—' }}</span>
-              </div>
-            </button>
-          </div>
-          <div v-else class="empty-hint">لا توجد عقود بعد</div>
         </article>
 
         <article class="panel panel--actions">
@@ -765,7 +806,7 @@ onMounted(async () => {
 }
 
 .bottom-grid {
-  grid-template-columns: 1.2fr 1fr 0.95fr;
+  grid-template-columns: 1.2fr 1fr;
 }
 
 .panel {
@@ -812,69 +853,6 @@ onMounted(async () => {
 
 .panel__link:hover {
   background: color-mix(in srgb, var(--brand-soft) 70%, white);
-}
-
-.recent-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.recent-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  text-align: start;
-  padding: 12px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  cursor: pointer;
-  font-family: inherit;
-  color: inherit;
-  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
-}
-
-.recent-row:hover {
-  border-color: color-mix(in srgb, var(--brand-mid) 30%, var(--border));
-  background: #fff;
-}
-
-.recent-row__main {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 0.9rem;
-}
-
-.recent-row__meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.badge {
-  display: inline-flex;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--brand-mid);
-  background: var(--brand-soft);
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-
-.empty-hint {
-  padding: 28px 12px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.9rem;
 }
 
 .quick-grid {

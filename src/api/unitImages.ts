@@ -16,7 +16,6 @@ export async function uploadUnitImage(unitId: string, file: File, sortOrder = 0)
   const res = await apiClient.post<ApiResponse<UnitImage>>(
     `/api/units/${unitId}/images`,
     form,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
   )
   return unwrap(res)
 }

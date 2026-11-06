@@ -25,14 +25,28 @@ export interface LoginRequest {
   password: string
 }
 
+export interface ResidentLoginRequest {
+  phone: string
+  code: string
+}
+
 export interface UserInfo {
   id: string
   firstName: string | null
   lastName: string | null
   email: string | null
   role: string | null
+  roleName?: string | null
   complexId: string | null
   isSuperAdmin: boolean
+  pages?: string[] | null
+  authKind?: 'staff' | 'resident' | string | null
+  residentId?: string | null
+  customerId?: string | null
+  phone?: string | null
+  unitNumber?: string | null
+  unitId?: string | null
+  complexName?: string | null
 }
 
 export interface LoginResponse {
@@ -168,12 +182,26 @@ export const UnitUi = {
 export type UnitUi = (typeof UnitUi)[keyof typeof UnitUi]
 
 export const MaritalStatus = {
+  None: 0,
   Single: 1,
   Married: 2,
   Divorced: 3,
   Widowed: 4,
 } as const
 export type MaritalStatus = (typeof MaritalStatus)[keyof typeof MaritalStatus]
+
+export const EducationLevel = {
+  NoCertificate: 0,
+  Primary: 1,
+  Intermediate: 2,
+  Preparatory: 3,
+  Diploma: 4,
+  Bachelor: 5,
+  HigherDiploma: 6,
+  Master: 7,
+  Doctorate: 8,
+} as const
+export type EducationLevel = (typeof EducationLevel)[keyof typeof EducationLevel]
 
 export interface Unit {
   id: string
@@ -233,6 +261,8 @@ export interface Customer {
   employer: string | null
   monthlyIncome: number | null
   maritalStatus: MaritalStatus
+  educationLevel?: EducationLevel | null
+  notes?: string | null
   complexId: string
   createdAt: string
 }
@@ -250,6 +280,8 @@ export interface CreateCustomerDto {
   employer?: string | null
   monthlyIncome?: number | null
   maritalStatus: MaritalStatus
+  educationLevel?: EducationLevel | null
+  notes?: string | null
   complexId: string
 }
 
@@ -295,6 +327,8 @@ export interface Agent {
   userId: string
   isSubscriptionActive: boolean
   createdAt: string
+  roleName?: string | null
+  pageKeys?: string[] | null
 }
 
 export interface CreateAgentDto {
@@ -307,6 +341,8 @@ export interface CreateAgentDto {
   phone?: string | null
   address?: string | null
   notes?: string | null
+  roleName?: string | null
+  pageKeys?: string[] | null
 }
 
 export interface UpdateAgentDto {
@@ -319,6 +355,8 @@ export interface UpdateAgentDto {
   phone?: string | null
   address?: string | null
   notes?: string | null
+  roleName?: string | null
+  pageKeys?: string[] | null
 }
 
 export const ResidentStatus = {
@@ -327,6 +365,28 @@ export const ResidentStatus = {
   Evicted: 3,
 } as const
 export type ResidentStatus = (typeof ResidentStatus)[keyof typeof ResidentStatus]
+
+export const OccupancyType = {
+  Owner: 1,
+  Tenant: 2,
+} as const
+export type OccupancyType = (typeof OccupancyType)[keyof typeof OccupancyType]
+
+export const UnitResidentPhase = {
+  Available: 1,
+  KeyHandedOver: 2,
+  Occupied: 3,
+} as const
+export type UnitResidentPhase = (typeof UnitResidentPhase)[keyof typeof UnitResidentPhase]
+
+export const FamilyRelation = {
+  Spouse: 1,
+  Parent: 2,
+  Sibling: 3,
+  Child: 4,
+  Other: 5,
+} as const
+export type FamilyRelation = (typeof FamilyRelation)[keyof typeof FamilyRelation]
 
 export const MaintenanceCategory = {
   Electrical: 1,
@@ -346,6 +406,10 @@ export interface Employee {
   email: string | null
   username: string | null
   complexId: string
+  userId?: string | null
+  roleName?: string | null
+  pageKeys?: string[] | null
+  hasLogin?: boolean
   createdAt: string
 }
 
@@ -358,6 +422,8 @@ export interface CreateEmployeeDto {
   username?: string | null
   password?: string | null
   complexId: string
+  roleName?: string | null
+  pageKeys?: string[] | null
 }
 
 export type UpdateEmployeeDto = CreateEmployeeDto
@@ -367,22 +433,144 @@ export interface Resident {
   moveInDate: string
   moveOutDate: string | null
   status: ResidentStatus
+  occupancyType: OccupancyType
   customerId: string
+  customerName?: string | null
   unitId: string
+  unitNumber?: string | null
   complexId: string
   createdAt: string
+  hasLoginCode?: boolean
 }
 
 export interface CreateResidentDto {
   moveInDate: string
   moveOutDate?: string | null
   status: ResidentStatus
+  occupancyType: OccupancyType
   customerId: string
   unitId: string
   complexId: string
 }
 
 export type UpdateResidentDto = CreateResidentDto
+
+export interface ResidentStats {
+  total: number
+  owners: number
+  tenants: number
+  movedOut: number
+  evicted: number
+}
+
+export interface ResidentContractUnit {
+  unitId: string
+  unitNumber: string
+  area: number
+  complexId: string
+  buildingId?: string | null
+  buildingName?: string | null
+  blockId?: string | null
+  blockName?: string | null
+  phase: UnitResidentPhase
+  hasHandover: boolean
+  hasOccupancy: boolean
+  handoverId?: string | null
+  occupancyId?: string | null
+  customerId?: string | null
+  customerName?: string | null
+  residentId?: string | null
+}
+
+export interface KeyHandoverDto {
+  id?: string
+  unitId?: string
+  complexId?: string
+  customerId?: string | null
+  recipientName?: string | null
+  recipientNationalId?: string | null
+  recipientPhone?: string | null
+  receivedAt: string
+  keysCount: number
+  accessCardsCount: number
+  electricityReading?: number | null
+  electricityMeterPhotoUrl?: string | null
+  waterReading?: number | null
+  waterMeterPhotoUrl?: string | null
+  gasReading?: number | null
+  gasMeterPhotoUrl?: string | null
+  engineerName?: string | null
+  engineerNotes?: string | null
+  generalNotes?: string | null
+  createdAt?: string
+}
+
+export interface FamilyMemberDto {
+  id?: string | null
+  fullName: string
+  relation: FamilyRelation
+  nationalId?: string | null
+  birthDate?: string | null
+}
+
+export interface OccupancyDto {
+  id?: string
+  unitId?: string
+  complexId?: string
+  residentId?: string | null
+  customerId?: string | null
+  primaryResidentName?: string | null
+  primaryResidentNationalId?: string | null
+  occupancyDate: string
+  identityDocumentUrl?: string | null
+  totalOccupants: number
+  maleCount: number
+  femaleCount: number
+  occupancyType: OccupancyType
+  emergencyContactName?: string | null
+  emergencyRelation?: FamilyRelation | null
+  emergencyPhone?: string | null
+  familyMembers: FamilyMemberDto[]
+  createdAt?: string
+}
+
+export interface ResidentBuildingStats {
+  buildingId: string
+  buildingName: string
+  blockId: string
+  blockName: string
+  totalUnits: number
+  occupied: number
+  available: number
+  keyHandedOver: number
+}
+
+export interface ResidentProfile {
+  id: string
+  customerId: string
+  unitId: string
+  complexId: string
+  primaryResidentName: string
+  unitNumber?: string | null
+  buildingName?: string | null
+  occupancyType: OccupancyType
+  status: ResidentStatus
+  moveInDate: string
+  occupancyDate?: string | null
+  nationalId?: string | null
+  phone?: string | null
+  email?: string | null
+  identityDocumentUrl?: string | null
+  totalOccupants: number
+  maleCount: number
+  femaleCount: number
+  familyMembers: FamilyMemberDto[]
+  hasHandover: boolean
+  handover?: KeyHandoverDto | null
+  emergencyContactName?: string | null
+  emergencyRelation?: FamilyRelation | null
+  emergencyPhone?: string | null
+}
 
 export interface Technician {
   id: string
@@ -430,19 +618,50 @@ export interface Visitor {
   entryTime: string
   exitTime: string | null
   residentId: string
+  unitId?: string | null
+  qrCodeToken?: string | null
+  isUsed?: boolean
+  validUntil?: string | null
+  visitReason?: string | null
+  carModel?: string | null
+  carPlateNumber?: string | null
+  usedAt?: string | null
   createdAt: string
 }
 
 export interface CreateVisitorDto {
   visitorName?: string | null
   phone?: string | null
-  visitDate: string
-  entryTime: string
+  visitorPhone?: string | null
+  visitDate?: string | null
+  entryTime?: string | null
   exitTime?: string | null
   residentId: string
+  unitId?: string | null
+  visitReason?: string | null
+  validUntil?: string | null
 }
 
 export type UpdateVisitorDto = CreateVisitorDto
+
+export interface ScanVisitorPassDto {
+  qrCodeToken: string
+  carModel?: string | null
+  carPlateNumber?: string | null
+}
+
+export interface ScanVisitorPassResult {
+  success: boolean
+  message: string
+  visitorName: string
+  residentName: string
+  unitNumber: string
+  building: string
+  visitReason?: string | null
+  usedAt: string
+  visitorId: string
+  qrCodeToken: string
+}
 
 export const ReservationStatus = {
   Pending: 1,
@@ -510,10 +729,10 @@ export type InstallmentStatus = (typeof InstallmentStatus)[keyof typeof Installm
 
 export const PaymentMethod = {
   Cash: 1,
-  BankTransfer: 2,
-  Cheque: 3,
-  Card: 4,
-  Online: 5,
+  Bank: 2,
+  Transfer: 3,
+  Cheque: 4,
+  Card: 5,
 } as const
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
 
@@ -549,6 +768,7 @@ export interface Reservation {
   unitId: string
   customerId: string
   complexId: string
+  notes?: string | null
   createdAt: string
 }
 
@@ -560,6 +780,7 @@ export interface CreateReservationDto {
   unitId: string
   customerId: string
   complexId: string
+  notes?: string | null
 }
 
 export type UpdateReservationDto = CreateReservationDto
@@ -572,6 +793,7 @@ export interface SalesContract {
   contractPaymentType: ContractPaymentType
   pricingMode: PricingMode
   pricePlanId: string | null
+  contractDesignId?: string | null
   sellingPrice: number
   discount: number
   tax: number
@@ -587,12 +809,28 @@ export interface SalesContract {
   remainingAmount: number
   monthsCount: number
   installments: Installment[] | null
+  downPaymentInstallments?: Installment[] | null
+  downPaymentSchedule?: ContractDownPaymentScheduleItem[] | null
   contractStatus: ContractStatus
   customerId: string
   unitId: string
   salesAgentId: string
   complexId: string
   createdAt: string
+  updatedAt?: string
+}
+
+export interface ContractInstallmentScheduleItem {
+  index: number
+  dueDate: string
+  amount: number
+  percent?: number | null
+}
+
+export interface ContractDownPaymentScheduleItem {
+  name?: string | null
+  dueDate: string
+  amount: number
 }
 
 export interface CreateSalesContractDto {
@@ -600,6 +838,7 @@ export interface CreateSalesContractDto {
   contractPaymentType: ContractPaymentType
   pricingMode: PricingMode
   pricePlanId?: string | null
+  contractDesignId?: string | null
   sellingPrice: number
   discount: number
   tax: number
@@ -612,11 +851,19 @@ export interface CreateSalesContractDto {
   years?: number | null
   paymentIntervalMonths?: number | null
   firstInstallmentDate?: string | null
+  /** تاريخ العقد — اختياري؛ إن لم يُرسل يُستخدم تاريخ اليوم */
+  contractDate?: string | null
+  /** رقم العقد — يُرسل عند التعديل ويُتحقق من تسلسل تصميم العقد */
+  contractNumber?: string | null
   contractStatus: ContractStatus
   customerId: string
   unitId: string
   salesAgentId: string
   complexId: string
+  /** جدول الأقساط المخصّص — يُحفظ كما أدخل المستخدم */
+  installmentSchedule?: ContractInstallmentScheduleItem[] | null
+  /** جدول تقسيط المقدمة — مجموع المبالغ = المقدمة */
+  downPaymentSchedule?: ContractDownPaymentScheduleItem[] | null
 }
 
 export type UpdateSalesContractDto = CreateSalesContractDto
@@ -727,6 +974,13 @@ export interface ContractDesignStyle {
 /** 1 = يمين، 2 = يسار */
 export type ContractNumberSide = 1 | 2 | 'Right' | 'Left' | 'right' | 'left'
 
+/** 0 = قياسي، 1 = دريم سيتي */
+export const PdfLayoutKind = {
+  Standard: 0,
+  DreamCity: 1,
+} as const
+export type PdfLayoutKind = (typeof PdfLayoutKind)[keyof typeof PdfLayoutKind] | 'Standard' | 'DreamCity'
+
 export interface ClausePageGroup {
   /** رقم الصفحة (الغلاف = 1) */
   page: number
@@ -758,10 +1012,18 @@ export interface ContractDesignLayout {
   annexPage?: number | null
   /** توافق قديم */
   paymentTablePage?: number | null
-  /** اسم الطرف الأول (البائع) في التواقيع */
+  /** اسم الشركة / الطرف الأول في التواقيع ونص الأطراف */
   sellerSignName?: string | null
+  /** اسم الطرف الأول (السيد) — يمثلها مديرها المفوض */
+  sellerFirstPartyName?: string | null
+  /** رقم هوية الطرف الأول (البطاقة الوطنية) */
+  sellerNationalId?: string | null
   /** تسمية الطرف الثاني — الاسم الفعلي من العقد */
   buyerSignTitle?: string | null
+  /** عنوان شركة الطرف الأول (دريم سيتي) */
+  sellerCompanyAddress?: string | null
+  /** تفاصيل الحساب المصرفي للشركة (دريم سيتي) */
+  sellerBankDetails?: string | null
 }
 
 export interface ContractDesignAssets {
@@ -774,6 +1036,13 @@ export interface ContractDesign {
   id: string
   complexName: string | null
   complexId: string
+  /** 0 = قياسي (افتراضي)، 1 = دريم سيتي */
+  pdfLayoutKind?: PdfLayoutKind | number | null
+  contractNumberSequence?: number
+  /** اسم المصرف العقاري الافتراضي عند إنشاء عقد بطريقة دفع «مصرف عقاري» */
+  realEstateBankName?: string | null
+  /** سعر المتر لجدول البيانات المالية في طباعة المصرف */
+  pricePerMeter?: number | null
   header: ContractDesignHeader | null
   body: ContractDesignBody | null
   footer: ContractDesignFooter | null
@@ -787,6 +1056,10 @@ export interface ContractDesign {
 export interface CreateContractDesignDto {
   complexId: string
   complexName?: string | null
+  pdfLayoutKind?: PdfLayoutKind | number | null
+  contractNumberSequence?: number
+  realEstateBankName?: string | null
+  pricePerMeter?: number | null
   header?: ContractDesignHeader | null
   body?: ContractDesignBody | null
   footer?: ContractDesignFooter | null
@@ -830,6 +1103,7 @@ export interface Installment {
   penalty: number
   status: InstallmentStatus
   paidDate: string | null
+  name?: string | null
   planID: string
   complexId: string
   createdAt: string
@@ -852,6 +1126,8 @@ export interface Payment {
   id: string
   paymentMethod: PaymentMethod
   referenceNumber: string | null
+  bankName?: string | null
+  notes?: string | null
   amount: number
   paymentDate: string
   installmentId: string | null
@@ -861,12 +1137,16 @@ export interface Payment {
   complexId: string
   purpose: PaymentPurpose
   isPartialSplit: boolean
+  installmentLabel?: string | null
+  batchId?: string | null
   createdAt: string
 }
 
 export interface CreatePaymentDto {
   paymentMethod: PaymentMethod
   referenceNumber?: string | null
+  bankName?: string | null
+  notes?: string | null
   amount: number
   paymentDate: string
   installmentId?: string | null
@@ -876,6 +1156,7 @@ export interface CreatePaymentDto {
   complexId: string
   purpose?: PaymentPurpose
   splitPartial?: boolean
+  batchId?: string | null
 }
 
 export type UpdatePaymentDto = CreatePaymentDto
@@ -886,6 +1167,39 @@ export interface ProcessPaymentResult {
   paidInstallment: Installment | null
   debtInstallment: Installment | null
   wasPartialSplit: boolean
+}
+
+export interface ProcessBatchPaymentDto {
+  paymentMethod: PaymentMethod
+  referenceNumber?: string | null
+  bankName?: string | null
+  notes?: string | null
+  amount: number
+  paymentDate: string
+  contractId: string
+  customerId: string
+  receivedById: string
+  complexId: string
+  purpose?: PaymentPurpose
+  installmentId?: string | null
+  installmentIds?: string[] | null
+  applyOverflowToNext?: boolean
+}
+
+export interface PaymentAllocation {
+  label: string
+  installmentId?: string | null
+  purpose: PaymentPurpose
+  originalRemaining: number
+  allocatedAmount: number
+  remainingAfter: number
+}
+
+export interface ProcessBatchPaymentResult {
+  batchId: string
+  totalAmount: number
+  results: ProcessPaymentResult[]
+  allocations: PaymentAllocation[]
 }
 
 export interface Invoice {
@@ -966,4 +1280,183 @@ export interface UnitDocument {
   documentPath: string | null
   title: string | null
   createdAt: string
+}
+
+export interface CustomerDocument {
+  id: string
+  customerId: string
+  complexId: string
+  referenceNumber: string | null
+  notes: string | null
+  filePath: string
+  originalFileName: string | null
+  contentType: string | null
+  createdAt: string
+}
+
+export const ServiceTypeName = {
+  Electricity: 1,
+  Water: 2,
+  Internet: 3,
+  Gas: 4,
+  Security: 5,
+  Cleaning: 6,
+  Landscape: 7,
+  Elevator: 8,
+  CorridorLighting: 9,
+  Other: 10,
+} as const
+export type ServiceTypeName = (typeof ServiceTypeName)[keyof typeof ServiceTypeName]
+
+export const ServiceBillingMode = {
+  Fixed: 1,
+  Metered: 2,
+} as const
+export type ServiceBillingMode = (typeof ServiceBillingMode)[keyof typeof ServiceBillingMode]
+
+export const MeterReadingSource = {
+  Manual: 1,
+  Api: 2,
+} as const
+export type MeterReadingSource = (typeof MeterReadingSource)[keyof typeof MeterReadingSource]
+
+export interface ServiceType {
+  id: string
+  name: ServiceTypeName
+  displayName: string
+  billingMode: ServiceBillingMode
+  fixedAmount: number
+  unitPrice: number
+  unitOfMeasure: string | null
+  readingSource: MeterReadingSource
+  isActive: boolean
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateServiceTypeDto {
+  name: ServiceTypeName
+  displayName: string
+  billingMode: ServiceBillingMode
+  fixedAmount: number
+  unitPrice: number
+  unitOfMeasure?: string | null
+  readingSource: MeterReadingSource
+  isActive: boolean
+  complexId: string
+}
+
+export type UpdateServiceTypeDto = CreateServiceTypeDto
+
+export interface ServiceBill {
+  id: string
+  month: number
+  year: number
+  previousReading: number
+  reading: number
+  consumption: number
+  unitPrice: number
+  amount: number
+  discount: number
+  netAmount: number
+  dueDate: string
+  paid: boolean
+  paymentMethod?: PaymentMethod | null
+  paidAt?: string | null
+  readingSource: MeterReadingSource
+  residentId: string
+  residentName?: string | null
+  serviceTypeId: string
+  serviceDisplayName?: string | null
+  billingMode?: ServiceBillingMode | null
+  unitOfMeasure?: string | null
+  unitId?: string | null
+  unitNumber?: string | null
+  complexId: string
+  createdAt: string
+}
+
+export interface CreateServiceBillDto {
+  month?: number
+  months?: number[]
+  year: number
+  previousReading: number
+  reading: number
+  unitPrice?: number | null
+  amount?: number | null
+  discount?: number
+  dueDate?: string | null
+  paid: boolean
+  paymentMethod?: PaymentMethod | null
+  readingSource: MeterReadingSource
+  residentId: string
+  serviceTypeId: string
+  unitId?: string | null
+  complexId: string
+}
+
+export type UpdateServiceBillDto = CreateServiceBillDto
+
+export interface GenerateFixedServiceBillsDto {
+  complexId: string
+  month: number
+  year: number
+  serviceTypeId?: string | null
+}
+
+export interface PayMonthlyInvoiceDto {
+  complexId: string
+  residentId: string
+  unitId?: string | null
+  month: number
+  year: number
+  paymentMethod?: PaymentMethod
+  /** تاريخ التسديد — إن لم يُرسل يستخدم السيرفر الوقت الحالي */
+  paidAt?: string | null
+  /** مبلغ الخصم (ليس نسبة) */
+  discount?: number
+}
+
+export interface PayServiceBillsDto {
+  serviceBillIds: string[]
+  paymentMethod: PaymentMethod
+  /** تاريخ التسديد — إن لم يُرسل يستخدم السيرفر الوقت الحالي */
+  paidAt?: string | null
+  /** مبلغ الخصم (ليس نسبة) */
+  discount?: number
+}
+
+export interface MonthlyInvoiceLine {
+  serviceBillId: string
+  serviceTypeId: string
+  serviceDisplayName: string
+  billingMode: ServiceBillingMode
+  readingSource: MeterReadingSource
+  previousReading: number
+  reading: number
+  consumption: number
+  unitOfMeasure?: string | null
+  unitPrice: number
+  amount: number
+  discount: number
+  netAmount: number
+  paid: boolean
+  paymentMethod?: PaymentMethod | null
+  paidAt?: string | null
+}
+
+export interface MonthlyInvoice {
+  complexId: string
+  residentId: string
+  residentName?: string | null
+  unitId?: string | null
+  unitNumber?: string | null
+  month: number
+  year: number
+  dueDate: string
+  totalAmount: number
+  paidAmount: number
+  remainingAmount: number
+  fullyPaid: boolean
+  lines: MonthlyInvoiceLine[]
 }

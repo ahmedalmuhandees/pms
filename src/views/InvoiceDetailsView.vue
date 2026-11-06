@@ -22,6 +22,7 @@ import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { asSelectOptions, formatDate, formatMoney } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
@@ -31,7 +32,11 @@ const invoices = ref<Invoice[]>([])
 const invoiceMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<InvoiceDetail, InvoiceDetailParams>(getInvoiceDetails)
 
 const dialogVisible = ref(false)
@@ -148,7 +153,9 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث بالوصف..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث بالوصف..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
             v-model="invoiceFilter"
@@ -164,8 +171,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="6" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -177,18 +185,23 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="description" header="الوصف" />
-        <Column header="الكمية" style="width: 90px">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="description" header="الوصف"  sortable />
+        <Column header="الكمية" style="width: 90px" sortable>
           <template #body="{ data }">{{ data.qty }}</template>
         </Column>
-        <Column header="السعر" style="width: 120px">
+        <Column header="السعر" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatMoney(data.price) }}</template>
         </Column>
-        <Column header="الإجمالي" style="width: 120px">
+        <Column header="الإجمالي" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatMoney(data.total) }}</template>
         </Column>
-        <Column header="الفاتورة">
+        <Column header="الفاتورة" sortable>
           <template #body="{ data }">{{ invoiceMap[data.invoiceId] || data.invoiceId.slice(0, 8) }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -198,6 +211,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog

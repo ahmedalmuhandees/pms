@@ -61,6 +61,7 @@ import Skeleton from 'primevue/skeleton'
   border: 1px solid var(--border);
 }
 
+
 .dash-skeleton__hero-copy {
   flex: 1;
   min-width: 220px;

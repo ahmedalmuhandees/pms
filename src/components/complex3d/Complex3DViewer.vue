@@ -265,18 +265,18 @@ onUnmounted(() => {
 }
 
 .c3d__pill.is-available {
-  background: #e8f5f0;
-  color: #1f7a5c;
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .c3d__pill.is-reserved {
-  background: #f8efe6;
-  color: #c46b2b;
+  background: #fef9c3;
+  color: #a16207;
 }
 
 .c3d__pill.is-sold {
-  background: #e4edf8;
-  color: #2b6cb0;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .c3d__pill.is-rented {

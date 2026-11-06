@@ -5,6 +5,8 @@ import type {
   Payment,
   PagedResult,
   PaginationParams,
+  ProcessBatchPaymentDto,
+  ProcessBatchPaymentResult,
   ProcessPaymentResult,
   UpdatePaymentDto,
 } from '@/types'
@@ -39,8 +41,21 @@ export async function processPayment(payload: CreatePaymentDto) {
   return unwrap(res)
 }
 
+export async function processBatchPayment(payload: ProcessBatchPaymentDto) {
+  const res = await apiClient.post<ApiResponse<ProcessBatchPaymentResult>>(
+    '/api/Payments/process-batch',
+    payload,
+  )
+  return unwrap(res)
+}
+
 export async function downloadPaymentPdf(id: string) {
   const res = await apiClient.get(`/api/Payments/${id}/pdf`, { responseType: 'blob' })
+  return res.data as Blob
+}
+
+export async function downloadPaymentBatchPdf(batchId: string) {
+  const res = await apiClient.get(`/api/Payments/batch/${batchId}/pdf`, { responseType: 'blob' })
   return res.data as Blob
 }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
+import RememberedInput from '@/components/RememberedInput.vue'
 import Password from 'primevue/password'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
@@ -25,21 +25,31 @@ import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { asSelectOptions, formatDate } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import PagePermissionsPicker from '@/components/PagePermissionsPicker.vue'
+import { ALL_PAGE_KEYS } from '@/utils/pagePermissions'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
 const complexes = ref<Complex[]>([])
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Agent, AgentParams>(getAgents)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const activeFilter = ref<boolean | null>(null)
 const startDateModel = ref<Date | null>(null)
 const endDateModel = ref<Date | null>(null)
@@ -54,6 +64,8 @@ const emptyForm = (): CreateAgentDto => ({
   phone: '',
   address: '',
   notes: '',
+  roleName: 'مدير مجمع',
+  pageKeys: [...ALL_PAGE_KEYS.filter((k) => !['complexes', 'agents', 'users', 'complex-builder', 'horizontal-builder'].includes(k))],
 })
 
 const form = reactive<CreateAgentDto>(emptyForm())
@@ -79,7 +91,7 @@ async function loadComplexes() {
 function openCreate() {
   editingId.value = null
   Object.assign(form, emptyForm(), {
-    complexId: complexFilter.value || complexes.value[0]?.id || '',
+    complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
   })
   startDateModel.value = new Date()
   const end = new Date()
@@ -100,6 +112,8 @@ function openEdit(row: Agent) {
     phone: row.phone,
     address: row.address,
     notes: row.notes,
+    roleName: row.roleName || 'مدير مجمع',
+    pageKeys: [...(row.pageKeys || [])],
   })
   startDateModel.value = row.subscriptionStartDate ? new Date(row.subscriptionStartDate) : null
   endDateModel.value = row.subscriptionEndDate ? new Date(row.subscriptionEndDate) : null
@@ -135,6 +149,14 @@ async function save() {
     notify.warning('كلمة السر يجب أن تكون 8 أحرف على الأقل وتحتوي حروفاً وأرقاماً')
     return
   }
+  if (!form.roleName?.trim()) {
+    notify.warning('أدخل اسم الصلاحية')
+    return
+  }
+  if (!form.pageKeys?.length) {
+    notify.warning('اختر صفحة واحدةحدة على الأقل في السايدبار')
+    return
+  }
 
   form.subscriptionStartDate = startDateModel.value.toISOString()
   form.subscriptionEndDate = endDateModel.value.toISOString()
@@ -152,6 +174,8 @@ async function save() {
         address: form.address,
         notes: form.notes,
         password: form.password || null,
+        roleName: form.roleName,
+        pageKeys: form.pageKeys,
       }
       await updateAgent(editingId.value, payload)
       notify.success('تم التحديث')
@@ -212,9 +236,12 @@ onMounted(async () => {
         v-model:search="search"
         placeholder="ابحث بالاسم أو البريد أو الهاتف..."
         @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode"
       >
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             :model-value="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -242,8 +269,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="7" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -255,20 +283,31 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="name" header="مدير المجمع" />
-        <Column header="المجمع">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="name" header="مدير المجمع"  sortable />
+        <Column header="المجمع" sortable>
           <template #body="{ data }">{{ data.complexName || '—' }}</template>
         </Column>
-        <Column field="email" header="البريد" />
-        <Column field="phone" header="الهاتف" style="width: 120px" />
-        <Column header="بداية الاشتراك" style="width: 120px">
+        <Column field="email" header="البريد"  sortable />
+        <Column header="الصلاحية" style="width: 140px" sortable>
+          <template #body="{ data }">
+            {{ data.roleName || '—' }}
+            <small v-if="data.pageKeys?.length" class="pages-count">({{ data.pageKeys.length }} صفحة)</small>
+          </template>
+        </Column>
+        <Column field="phone" header="الهاتف" style="width: 120px"  sortable />
+        <Column header="بداية الاشتراك" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatDate(data.subscriptionStartDate) }}</template>
         </Column>
-        <Column header="نهاية الاشتراك" style="width: 120px">
+        <Column header="نهاية الاشتراك" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatDate(data.subscriptionEndDate) }}</template>
         </Column>
-        <Column header="الحالة" style="width: 100px">
+        <Column header="الحالة" style="width: 100px" sortable>
           <template #body="{ data }">
             <Tag
               :value="data.isSubscriptionActive ? 'نشط' : 'منتهٍ'"
@@ -283,22 +322,25 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
       v-model:visible="dialogVisible"
       modal
       :header="editingId ? 'تعديل مدير مجمع' : 'إضافة مدير مجمع'"
-      :style="{ width: '640px' }"
+      :style="{ width: '720px' }"
+      :breakpoints="{ '960px': '95vw' }"
     >
       <div class="form-grid">
         <div class="field">
           <label>اسم مدير المجمع</label>
-          <InputText v-model="form.name" />
+          <RememberedInput v-model="form.name" memory-key="agent.name" />
         </div>
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"
@@ -318,7 +360,7 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label>البريد الإلكتروني</label>
-          <InputText v-model="form.email" type="email" />
+          <RememberedInput v-model="form.email" memory-key="agent.email" type="email" />
         </div>
         <div class="field">
           <label>{{ editingId ? 'كلمة السر (اختياري)' : 'كلمة السر' }}</label>
@@ -333,15 +375,21 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label>رقم الهاتف</label>
-          <InputText v-model="form.phone" />
+          <RememberedInput v-model="form.phone" memory-key="agent.phone" />
         </div>
         <div class="field">
           <label>العنوان</label>
-          <InputText v-model="form.address" />
+          <RememberedInput v-model="form.address" memory-key="agent.address" />
         </div>
         <div class="field full">
           <label>ملاحظات</label>
           <Textarea v-model="form.notes" rows="3" auto-resize class="w-full" />
+        </div>
+        <div class="field full">
+          <PagePermissionsPicker
+            v-model:role-name="form.roleName"
+            v-model:page-keys="form.pageKeys"
+          />
         </div>
       </div>
       <template #footer>
@@ -357,6 +405,11 @@ onMounted(async () => {
 <style scoped>
 .w-full { width: 100%; }
 .filter-select { min-width: 160px; }
+.pages-count {
+  display: block;
+  color: var(--muted, #6b7280);
+  font-size: 0.75rem;
+}
 :deep(.p-password),
 :deep(.p-password-input),
 :deep(.p-datepicker) { width: 100%; }

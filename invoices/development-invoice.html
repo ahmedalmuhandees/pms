@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <title>Development Invoice / فاتورة تطوير</title>
+  <style>
+    @page { size: A4; margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: #1a2332;
+      font-size: 10.5px;
+      line-height: 1.45;
+      background: #fff;
+    }
+    .page { width: 100%; max-width: 186mm; margin: 0 auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid #1e3a5f;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 22px;
+      color: #1e3a5f;
+      letter-spacing: 0.5px;
+    }
+    .brand .sub {
+      margin-top: 4px;
+      color: #5a6a7a;
+      font-size: 11px;
+    }
+    .invoice-meta {
+      text-align: right;
+      min-width: 42%;
+    }
+    .invoice-meta .badge {
+      display: inline-block;
+      background: #1e3a5f;
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .meta-row { margin: 2px 0; color: #334; }
+    .meta-row strong { color: #1e3a5f; }
+
+    .parties {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .card {
+      border: 1px solid #d8e0ea;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #f7f9fc;
+    }
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #1e3a5f;
+      border-bottom: 1px solid #cfd8e6;
+      padding-bottom: 4px;
+    }
+    .card p { margin: 2px 0; }
+
+    .intro {
+      margin: 0 0 12px;
+      padding: 8px 10px;
+      background: #eef3f9;
+      border-right: 3px solid #2763eb;
+      border-radius: 4px;
+      color: #334;
+    }
+
+    h2.section {
+      margin: 14px 0 6px;
+      font-size: 13px;
+      color: #fff;
+      background: #1e3a5f;
+      padding: 6px 10px;
+      border-radius: 4px;
+    }
+    h2.section .en { font-weight: 600; }
+    h2.section .ar { float: left; font-weight: 600; direction: rtl; }
+
+    table.items {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 4px;
+    }
+    table.items th {
+      background: #e8eef6;
+      color: #1e3a5f;
+      font-size: 10px;
+      text-align: left;
+      padding: 6px 7px;
+      border: 1px solid #c9d4e3;
+    }
+    table.items th.ar { text-align: right; direction: rtl; }
+    table.items th.no { width: 28px; text-align: center; }
+    table.items td {
+      padding: 5px 7px;
+      border: 1px solid #dde3ec;
+      vertical-align: top;
+    }
+    table.items td.no {
+      text-align: center;
+      color: #6a7a8a;
+      font-size: 9.5px;
+      background: #fafbfd;
+    }
+    table.items td.en { width: 46%; }
+    table.items td.ar {
+      width: 46%;
+      text-align: right;
+      direction: rtl;
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    }
+    table.items tr:nth-child(even) td { background: #fafbfd; }
+
+    .subsystem {
+      margin: 8px 0 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #2763eb;
+      padding: 3px 0;
+      border-bottom: 1px dashed #b8c7da;
+    }
+    .subsystem .ar { float: left; direction: rtl; color: #1e3a5f; }
+
+    .totals {
+      margin-top: 16px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .totals-box {
+      width: 320px;
+      border: 1px solid #c9d4e3;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .totals-box .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 7px 12px;
+      border-bottom: 1px solid #e4eaf2;
+      background: #fff;
+    }
+    .totals-box .row.work {
+      background: #eef3f9;
+      font-weight: 600;
+      color: #1e3a5f;
+    }
+    .totals-box .row.discount {
+      background: #fff7e8;
+      color: #8a5a00;
+    }
+    .totals-box .row.grand {
+      background: #1e3a5f;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      border-bottom: none;
+      padding: 10px 12px;
+    }
+    .totals-box .label-bilingual {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .totals-box .label-bilingual .ar {
+      font-size: 10px;
+      opacity: 0.9;
+      direction: rtl;
+      text-align: left;
+    }
+
+    .footer {
+      margin-top: 18px;
+      padding-top: 10px;
+      border-top: 1px solid #d0d8e4;
+      font-size: 9.5px;
+      color: #667788;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .footer .ar { direction: rtl; text-align: right; }
+    .note {
+      margin-top: 10px;
+      font-size: 9.5px;
+      color: #556677;
+      padding: 8px 10px;
+      border: 1px dashed #c9d4e3;
+      border-radius: 4px;
+    }
+    .note .ar { direction: rtl; text-align: right; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="brand">
+        <h1>Solid Code IQ</h1>
+        <div class="sub">Software Development Invoice<br />فاتورة تطوير برمجي</div>
+      </div>
+      <div class="invoice-meta">
+        <div class="badge">INVOICE / فاتورة</div>
+        <div class="meta-row"><strong>No / الرقم:</strong> INV-SC-2026-001</div>
+        <div class="meta-row"><strong>Date / التاريخ:</strong> 24 Oct 2026 — ٢٤ تشرين الأول ٢٠٢٦</div>
+        <div class="meta-row"><strong>Currency / العملة:</strong> USD ($)</div>
+        <div class="meta-row"><strong>Status / الحالة:</strong> Final Settlement / تسوية نهائية</div>
+      </div>
+    </div>
+
+    <div class="parties">
+      <div class="card">
+        <h3>From / من</h3>
+        <p><strong>Solid Code IQ — Development Team</strong></p>
+        <p>Full-stack delivery: Backend, Frontend, Flutter App</p>
+        <p>تطوير متكامل: باكند، فرونت، تطبيق Flutter</p>
+      </div>
+      <div class="card">
+        <h3>Bill To / إلى</h3>
+        <p><strong>Client / العميل</strong></p>
+        <p>Wakeel System + Residential Complex System</p>
+        <p>نظام الوكيل + نظام المجمعات السكنية</p>
+      </div>
+    </div>
+
+    <div class="intro">
+      This invoice covers all completed features, enhancements, and integrations delivered during the project period (bilingual checklist below).<br />
+      تغطي هذه الفاتورة كافة الميزات والإضافات والتحسينات والتكاملات المنفّذة خلال فترة المشروع (قائمة ثنائية اللغة أدناه).
+    </div>
+
+    <!-- ===================== WAKEEL ===================== -->
+    <h2 class="section">
+      <span class="en">1) Wakeel Agent System — نظام وكيل</span>
+    </h2>
+
+    <div class="subsystem">
+      Backend API
+      <span class="ar">الباكند</span>
+    </div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="no">#</th>
+          <th>English Description</th>
+          <th class="ar">الوصف بالعربية</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="no">1</td><td class="en">Isolated monthly accounts module (paid / unpaid / other-month / free unpaid / service-fee unpaid / cashback / Excel export)</td><td class="ar">وحدة الحسابات الشهرية المعزولة (مسدد / غير مسدد / مسدد لغير الشهر / اشتراكات مجانية غير مسددة / أجور غير مسددة / كاش باك / تصدير Excel)</td></tr>
+        <tr><td class="no">2</td><td class="en">Daily accounts formula fix: total incoming = subscription cash + paid subscription debts + service fees + paid service-fee debts</td><td class="ar">تصحيح معادلة الحسابات اليومية: الوارد الكلي = واصل الاشتراك + ديون الاشتراك الواصلة + وارد الأجور + ديون الأجور الواصلة</td></tr>
+        <tr><td class="no">3</td><td class="en">MasterCard filter on accounts + paid service-fee debt card + username column on debts</td><td class="ar">فلتر الماستر في الحسابات + كارد ديون الأجور الواصلة + عمود اسم المستخدم في الديون</td></tr>
+        <tr><td class="no">4</td><td class="en">Regional monthly office expenses: year/month scope, withdraw from region profit, cash/master source, approval workflow, remaining balances</td><td class="ar">مصاريف المنطقة الشهرية: سنة/شهر، سحب من ربح المنطقة، مصدر كاش/ماستر، موافقة، والمتبقي بعد الصرف</td></tr>
+        <tr><td class="no">5</td><td class="en">Receipt handover aligned with expense profit totals and monthly filters</td><td class="ar">الاستلام والتسليم مربوط بربح المصاريف وفلاتر السنة/الشهر</td></tr>
+        <tr><td class="no">6</td><td class="en">Call Center tickets (subscriber search, contact type, description validation, daily &amp; per-subscriber stats)</td><td class="ar">مركز الاتصال: تذاكر مكالمات (بحث مشترك، نوع الاتصال، تحقق الوصف، إحصائيات يومية ولكل مشترك)</td></tr>
+        <tr><td class="no">7</td><td class="en">App chat conversations with global in-app notification + sound</td><td class="ar">محادثات تطبيق المشترك مع إشعار داخل النظام من أي صفحة + صوت</td></tr>
+        <tr><td class="no">8</td><td class="en">Chat image upload + auto-delete images from server when chat is closed</td><td class="ar">رفع صورة في المحادثة + حذف تلقائي من السيرفر عند إغلاق المحادثة</td></tr>
+        <tr><td class="no">9</td><td class="en">PIN cards &amp; pricing module for recharge activations</td><td class="ar">وحدة كروت الشحن PIN والتسعير للتفعيل عبر الكرت</td></tr>
+        <tr><td class="no">10</td><td class="en">Employee permission fix for task assignment (addTask)</td><td class="ar">إصلاح صلاحية الموظف لتعيين المهام (addTask)</td></tr>
+        <tr><td class="no">11</td><td class="en">Subscriber app JWT extended to 30 days with silent logout on expiry</td><td class="ar">توكن تطبيق المشترك لمدة ٣٠ يوماً مع خروج صامت عند الانتهاء</td></tr>
+        <tr><td class="no">12</td><td class="en">Hide pre-2026-10-10 activation history in subscriber app (keep DB records)</td><td class="ar">إخفاء سجل التفعيلات قبل ١٠/١٠/٢٠٢٦ في التطبيق مع الإبقاء على السجلات في القاعدة</td></tr>
+        <tr><td class="no">13</td><td class="en">Region WhatsApp templates (activation, expiry alert, details, debt alert, free message)</td><td class="ar">قوالب واتساب لكل منطقة (تفعيل، تنبيه انتهاء، تفاصيل، تنبيه دين، رسالة حرة)</td></tr>
+        <tr><td class="no">14</td><td class="en">Shared WhatsApp session linking multiple regions to one number</td><td class="ar">ربط رقم واتساب واحد بعدة مناطق مع الحفاظ على الرقم المستقل لكل منطقة</td></tr>
+        <tr><td class="no">15</td><td class="en">SAS / FTTH sync &amp; diff review APIs + server publish/deploy support</td><td class="ar">مزامنة SAS / FTTH ومراجعة الفروقات + دعم النشر على السيرفر</td></tr>
+      </tbody>
+    </table>
+
+    <div class="subsystem">
+      Frontend Dashboard
+      <span class="ar">واجهة الوكيل</span>
+    </div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="no">#</th>
+          <th>English Description</th>
+          <th class="ar">الوصف بالعربية</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="no">16</td><td class="en">Dashboard redesign: totals, subscription amounts, service fees, cash vs master, balance alerts, recent activations, change ratios</td><td class="ar">إعادة تصميم لوحة التحكم: الوارد، الاشتراكات، الأجور، نقد/ماستر، تنبيه الرصيد، آخر التفعيلات، نسب التغير</td></tr>
+        <tr><td class="no">17</td><td class="en">Grouped sidebar navigation (subscribers, maintenance, call center, materials, finance, employees)</td><td class="ar">تنظيم السايدبار بقوائم منسدلة (مشتركون، صيانة، مركز اتصال، مواد، مالية، موظفون)</td></tr>
+        <tr><td class="no">18</td><td class="en">Solid Links branding (colors #2763eb / #66d9b3, IBM Plex Sans Arabic, logos, tab titles)</td><td class="ar">هوية Solid Links (الألوان، الخط العربي، الشعارات، عناوين التبويب)</td></tr>
+        <tr><td class="no">19</td><td class="en">Sales screen searchable subscriber picker (no full-list fetch)</td><td class="ar">شاشة البيع باختيار مشترك عبر البحث بدل جلب القائمة كاملة</td></tr>
+        <tr><td class="no">20</td><td class="en">Subscriber activation history shows package + service fees total</td><td class="ar">سجل تفعيل المشترك يعرض مجموع الباقة + الأجور</td></tr>
+        <tr><td class="no">21</td><td class="en">Call Center page + App Chat conversations page + region Excel export</td><td class="ar">صفحة مركز الاتصال + محادثات التطبيق + تصدير Excel حسب المنطقة</td></tr>
+        <tr><td class="no">22</td><td class="en">PIN cards UI, office expenses UI, receipt handover UI, isolated monthly accounts UI</td><td class="ar">واجهات كروت PIN والمصاريف والاستلام والتسليم والحسابات الشهرية المعزولة</td></tr>
+        <tr><td class="no">23</td><td class="en">Agent system features announcement document (MD) for marketing to agents</td><td class="ar">ملف إعلان مميزات النظام للوكلاء (Markdown)</td></tr>
+        <tr><td class="no">24</td><td class="en">Landing/login routing cleanup + APK download hosting on subscriber-info page</td><td class="ar">تصحيح مسارات الدخول واستضافة تحميل APK في صفحة معلومات المشترك</td></tr>
+      </tbody>
+    </table>
+
+    <div class="subsystem">
+      Flutter Subscriber App
+      <span class="ar">تطبيق المشترك Flutter</span>
+    </div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="no">#</th>
+          <th>English Description</th>
+          <th class="ar">الوصف بالعربية</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="no">25</td><td class="en">New Flutter app: login by full name + phone, home subscription card with progress bar</td><td class="ar">تطبيق Flutter جديد: دخول بالاسم الثلاثي والهاتف، بطاقة اشتراك مع شريط الأيام المتبقية</td></tr>
+        <tr><td class="no">26</td><td class="en">Onboarding screens (3 steps) + light/dark theme + rewards/discounts card</td><td class="ar">شاشات ترحيب (٣ خطوات) + ثيم نهاري/ليلي + كارد الخصومات والمكافآت</td></tr>
+        <tr><td class="no">27</td><td class="en">Package picker without price until selection; show package + company fees + total; +10,000 display markup</td><td class="ar">اختيار الباقة بدون سعر ثم عرض سعر الباقة + خدمات الشركة + المجموع؛ زيادة ١٠٬٠٠٠ على العرض</td></tr>
+        <tr><td class="no">28</td><td class="en">FTTH packages filter: Basic / Plus / Pro Max / Turbo</td><td class="ar">عرض باقات FTTH فقط: Basic / Plus / Pro Max / Turbo</td></tr>
+        <tr><td class="no">29</td><td class="en">In-app support chat with image attach (gallery) for web &amp; mobile</td><td class="ar">محادثة دعم داخل التطبيق مع إرسال صورة من المعرض (ويب وموبايل)</td></tr>
+        <tr><td class="no">30</td><td class="en">Default support phone 07890008400 + speed test screen + maintenance request flow</td><td class="ar">رقم دعم افتراضي ٠٧٨٩٠٠٠٨٤٠٠ + فحص السرعة + طلبات الصيانة</td></tr>
+        <tr><td class="no">31</td><td class="en">APK &amp; Web builds published (Vercel / downloads folder)</td><td class="ar">بناء APK والويب ونشرهما (Vercel / مجلد التحميل)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="subsystem">
+      Free / Shared Integrations
+      <span class="ar">خدمات وتكاملات</span>
+    </div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="no">#</th>
+          <th>English Description</th>
+          <th class="ar">الوصف بالعربية</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="no">32</td><td class="en">GoWhatsApp / whapi Business pairing, status, multi-region templates &amp; sending</td><td class="ar">تكامل واتساب Business عبر GoWhatsApp / whapi (اقتران، حالة، قوالب مناطق، إرسال)</td></tr>
+        <tr><td class="no">33</td><td class="en">Server publish path for Wakeel API (rsync/SSH deploy + production config)</td><td class="ar">مسار نشر API الوكيل على السيرفر (rsync/SSH وإعدادات الإنتاج)</td></tr>
+        <tr><td class="no">34</td><td class="en">MySQL/MariaDB migration scripts &amp; production DB update procedures</td><td class="ar">سكربتات ترحيل MySQL/MariaDB وإجراءات تحديث قاعدة الإنتاج</td></tr>
+        <tr><td class="no">35</td><td class="en">Server disk recovery / backup folders operational support</td><td class="ar">صيانة امتلاء القرص ودعم مجلدات النسخ الاحتياطي على السيرفر</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ===================== COMPLEX ===================== -->
+    <h2 class="section">
+      <span class="en">2) Residential Complex System — نظام المجمعات السكنية</span>
+    </h2>
+
+    <div class="subsystem">
+      Backend (Properties Management SaaS)
+      <span class="ar">الباكند</span>
+    </div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="no">#</th>
+          <th>English Description</th>
+          <th class="ar">الوصف بالعربية</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="no">36</td><td class="en">SaaS Agents (Complex Managers): create by admin, complex binding, subscription dates, credentials, scoped access</td><td class="ar">مدراء المجمعات (Agents): إنشاء من الأدمن، ربط بمجمع، تواريخ الاشتراك، بيانات الدخول، نطاق بيانات المجمع</td></tr>
+        <tr><td class="no">37</td><td class="en">Complex layout types (horizontal / vertical / mixed) + horizontal villa numbering sequences</td><td class="ar">أنواع تخطيط المجمع (أفقي/عمودي/مختلط) + تسلسل أرقام الفلل في الهيكل الأفقي</td></tr>
+        <tr><td class="no">38</td><td class="en">Sales contracts: cash / real-estate bank, down payment, handover amount, bank amount, years/months, serial numbers</td><td class="ar">عقود البيع: كاش/مصرف عقاري، مقدمة، استلام، مبلغ المصرف، سنوات/أشهر، تسلسل رقم العقد</td></tr>
+        <tr><td class="no">39</td><td class="en">Remaining=0 logic: no installment schedule on create/update; auto-clear schedule when down+handover settled</td><td class="ar">منطق المتبقي=٠: بدون جدول أقساط عند الإنشاء/التعديل؛ إلغاء الجدول عند سداد المقدمة والاستلام</td></tr>
+        <tr><td class="no">40</td><td class="en">Price plans CRUD (building/floors/positions/units, numeric or percentage, monthly schedule validation)</td><td class="ar">CRUD خطط الأسعار (مبنى/طوابق/مواضع/وحدات، رقمي أو نسبة، جدول أشهر مطابق للمتبقي)</td></tr>
+        <tr><td class="no">41</td><td class="en">Contract clauses + per-complex contract design (logo/template upload, party-one fields, bank name, serial start, freed numbers)</td><td class="ar">بنود العقد + تصميم عقد لكل مجمع (شعار/قالب، الطرف الأول، المصرف، بداية التسلسل، إعادة الأرقام المحذوفة)</td></tr>
+        <tr><td class="no">42</td><td class="en">QuestPDF contract printing (Zahraa template + Dream City dedicated layout without affecting others)</td><td class="ar">طباعة العقود بـ QuestPDF (قالب الزهراء + تخطيط دريم سيتي المستقل دون التأثير على الباقي)</td></tr>
+        <tr><td class="no">43</td><td class="en">Bank PDF print + free payment-detail rows modal under financial table</td><td class="ar">طباعة المصرف العقاري + مودل صفوف تفاصيل الدفع الحرة تحت الجدول المالي</td></tr>
+        <tr><td class="no">44</td><td class="en">Partial installment payment (split into paid + remaining debt) + multi-payment deposit receipt PDF</td><td class="ar">دفع جزئي للقسط + وصل إيداع متعدد الدفعات PDF</td></tr>
+        <tr><td class="no">45</td><td class="en">Customer account statement PDF + customer documents module</td><td class="ar">كشف حساب العميل PDF + وحدة مستندات العميل</td></tr>
+        <tr><td class="no">46</td><td class="en">Unit status independent of reservation; set Sold on contract create; amount rounding to whole numbers</td><td class="ar">حالة الوحدة مستقلة عن الحجز؛ تحويلها لمباع عند العقد؛ تقريب المبالغ لأقرب عدد صحيح</td></tr>
+        <tr><td class="no">47</td><td class="en">Residents occupancy flow: owner/tenant type, stats, key handover, occupancy forms, printable protocols</td><td class="ar">تدفق السكان: مالك/مستأجر، إحصائيات، تسليم مفتاح، تسكين، محاضر طباعة</td></tr>
+        <tr><td class="no">48</td><td class="en">Monthly service bills: settings, auto day-1 generation, manual multi-month add, discount amount, cash/master pay, filters, delete rules</td><td class="ar">فواتير الخدمات الشهرية: إعدادات، توليد يوم ١، إضافة لعدة أشهر، خصم مبلغ، كاش/ماستر، فلاتر، قواعد الحذف</td></tr>
+        <tr><td class="no">49</td><td class="en">Electricity / Gas / Water billing modules (pricing, Excel import, direct entry, reports, meter reading history)</td><td class="ar">وحدات كهرباء/غاز/مياه (تسعير، استيراد Excel، إدخال مباشر، تقارير، سجل القراءات)</td></tr>
+        <tr><td class="no">50</td><td class="en">Expenses module + general reports dashboard (accrual vs cash KPIs, discount totals)</td><td class="ar">وحدة المصاريف + التقارير العامة (مستحقات مقابل تحصيل نقدي، إجماليات الخصم)</td></tr>
+        <tr><td class="no">51</td><td class="en">WhatsApp per-complex pairing (+964), templates, test send, auto installment alerts settings</td><td class="ar">واتساب لكل مجمع (اقتران +٩٦٤، قوالب، إرسال تجريبي، إعدادات التنبيهات التلقائية للأقساط)</td></tr>
+        <tr><td class="no">52</td><td class="en">Sidebar page permissions for complex manager &amp; employees + production CORS/Swagger hardening</td><td class="ar">صلاحيات صفحات السايدبار لمدير المجمع والموظف + تأمين CORS/Swagger للإنتاج</td></tr>
+      </tbody>
+    </table>
+
+    <div class="subsystem">
+      Frontend (Vue Complex Dashboard)
+      <span class="ar">واجهة المجمعات</span>
+    </div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="no">#</th>
+          <th>English Description</th>
+          <th class="ar">الوصف بالعربية</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="no">53</td><td class="en">Dashboard statistics UI fixes (available units, completed contracts)</td><td class="ar">تصحيح إحصائيات لوحة التحكم (المتاح، العقود المكتملة)</td></tr>
+        <tr><td class="no">54</td><td class="en">Complex map filters/colors + 3D viewer (TresJS) with unit numbers &amp; gate signage</td><td class="ar">خريطة المجمع (فلاتر وألوان) + عرض 3D مع أرقام الوحدات ولافتة البوابة</td></tr>
+        <tr><td class="no">55</td><td class="en">Buildings card grid with sold/available counts linking to sales contracts</td><td class="ar">عرض المباني ككروت (مباع/متاح) مع الانتقال لعقود المبنى</td></tr>
+        <tr><td class="no">56</td><td class="en">Price plans, contract designs, customer profile tabs (info / contracts / payments / documents)</td><td class="ar">خطط الأسعار، تصاميم العقود، بروفايل العميل بتبويبات (بيانات/عقود/مدفوعات/مستندات)</td></tr>
+        <tr><td class="no">57</td><td class="en">Compact unit search (e.g. 601 → B6-0-1) across sales contracts</td><td class="ar">بحث الوحدة المضغوط (مثال ٦٠١ يجد B6-0-1) في عقود المبيعات</td></tr>
+        <tr><td class="no">58</td><td class="en">Resident pages: residents list, resident contracts, resident buildings, resident profile</td><td class="ar">صفحات السكان: القائمة، عقود السكان، بناية السكان، ملف الساكن</td></tr>
+        <tr><td class="no">59</td><td class="en">Service / Electricity / Gas / Water invoice &amp; report pages + expenses &amp; general reports</td><td class="ar">صفحات فواتير وتقارير الخدمة والكهرباء والغاز والمياه + المصاريف والتقارير العامة</td></tr>
+        <tr><td class="no">60</td><td class="en">Settings &amp; notification settings (WhatsApp) + complex-manager scoped UI (no structure create buttons)</td><td class="ar">الإعدادات وإعدادات التنبيهات (واتساب) + واجهة مدير المجمع بدون أزرار إنشاء الهيكل</td></tr>
+        <tr><td class="no">61</td><td class="en">Env split (dev/prod API), Vercel/nginx deploy hardening (MIME/stale chunk reload)</td><td class="ar">فصل بيئات التطوير/الإنتاج، وتأمين النشر على Vercel/Nginx (MIME وإعادة تحميل الملفات القديمة)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <strong>Scope note / ملاحظة النطاق:</strong>
+      Line items above summarize delivered development work across Wakeel (Backend, Frontend, Flutter) and Complex System (Backend, Frontend), including approved custom modules outside the original PMS core (residents occupancy, utility billing, expenses, WhatsApp alerts, page permissions).
+      <div class="ar">تلخّص البنود أعلاه أعمال التطوير المنجزة لنظام وكيل (باكند، فرونت، Flutter) ونظام المجمعات (باكند، فرونت)، بما فيها الإضافات المعتمدة خارج النواة الأصلية (السكان، فوترة المرافق، المصاريف، تنبيهات واتساب، صلاحيات الصفحات).</div>
+    </div>
+
+    <div class="totals">
+      <div class="totals-box">
+        <div class="row work">
+          <div class="label-bilingual">
+            <span>Work Duration</span>
+            <span class="ar">مدة العمل</span>
+          </div>
+          <div style="text-align:right">
+            <div>7 Months</div>
+            <div style="font-size:10px;opacity:.85">٧ أشهر عمل</div>
+            <div style="font-size:9.5px;margin-top:2px;opacity:.8">≈ 210 days / ≈ 1,680 hours*</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label-bilingual">
+            <span>Gross Amount (before discount)</span>
+            <span class="ar">المبلغ الإجمالي قبل الخصم</span>
+          </div>
+          <strong>$ 7,287.76</strong>
+        </div>
+        <div class="row discount">
+          <div class="label-bilingual">
+            <span>Discount 51%</span>
+            <span class="ar">خصم بنسبة ٥١٪</span>
+          </div>
+          <strong>− $ 3,716.76</strong>
+        </div>
+        <div class="row grand">
+          <div class="label-bilingual">
+            <span>TOTAL DUE</span>
+            <span class="ar">المبلغ الإجمالي المستحق</span>
+          </div>
+          <span>$ 3,571.00</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>
+        * Hours estimate based on 7 months × ~30 days × ~8 working hours (indicative).<br />
+        Thank you for your trust. — Solid Code IQ
+      </div>
+      <div class="ar">
+        * تقدير الساعات: ٧ أشهر × حوالي ٣٠ يوماً × حوالي ٨ ساعات عمل (تقريبي).<br />
+        شكراً لثقتكم. — Solid Code IQ
+      </div>
+    </div>
+  </div>
+</body>
+</html>

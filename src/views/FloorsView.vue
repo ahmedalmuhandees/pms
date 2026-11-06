@@ -16,6 +16,7 @@ import { asSelectOptions } from '@/utils/enums'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
@@ -26,7 +27,11 @@ const buildings = ref<Building[]>([])
 const buildingMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Floor, FloorParams>(getFloors)
 
 const dialogVisible = ref(false)
@@ -113,7 +118,9 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث عن طابق..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث عن طابق..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
             v-model="buildingFilter"
@@ -129,8 +136,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="3" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -142,9 +150,14 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="floorNumber" header="رقم الطابق" style="width: 140px" />
-        <Column header="المبنى">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="floorNumber" header="رقم الطابق" style="width: 140px"  sortable />
+        <Column header="المبنى" sortable>
           <template #body="{ data }">{{ buildingMap[data.buildingId] || data.buildingId }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -154,6 +167,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog

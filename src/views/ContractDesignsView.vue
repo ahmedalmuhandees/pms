@@ -11,7 +11,9 @@ import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type { ClausePageGroup, Complex, ContractDesign, CreateContractDesignDto } from '@/types'
+import { PdfLayoutKind } from '@/types'
 import {
+  applyDreamCityContent,
   createContractDesign,
   deleteContractDesign,
   getContractDesigns,
@@ -33,8 +35,12 @@ import {
 import { fileNameFromPath, resolveMediaUrl } from '@/utils/media'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
@@ -42,13 +48,17 @@ const complexes = ref<Complex[]>([])
 const complexMap = ref<Record<string, string>>({})
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<ContractDesign, ContractDesignParams>(getContractDesigns)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const signaturesText = ref('توقيع المطور\nتوقيع المشتري\nالختم')
 const primaryColorHex = ref('1e3a8a')
 const logoFile = ref<File | null>(null)
@@ -75,6 +85,29 @@ const contractNumberSideOptions = [
   { label: 'يمين', value: 1 },
   { label: 'يسار', value: 2 },
 ]
+
+const pdfLayoutKindOptions = [
+  { label: 'قياسي (بدون تغيير على المجمعات السابقة)', value: PdfLayoutKind.Standard },
+  { label: 'دريم سيتي', value: PdfLayoutKind.DreamCity },
+]
+
+const applyingDreamCity = ref(false)
+
+const isDreamCityLayout = computed(() => {
+  const kind = form.pdfLayoutKind
+  return kind === PdfLayoutKind.DreamCity || kind === 'DreamCity' || kind === 1
+})
+
+function normalizePdfLayoutKind(value: unknown): number {
+  if (value === PdfLayoutKind.DreamCity || value === 'DreamCity' || value === 1) {
+    return PdfLayoutKind.DreamCity
+  }
+  return PdfLayoutKind.Standard
+}
+
+function layoutKindLabel(value: unknown): string {
+  return normalizePdfLayoutKind(value) === PdfLayoutKind.DreamCity ? 'دريم سيتي' : 'قياسي'
+}
 
 const pageOptions = [
   { label: 'صفحة 2', value: 2 },
@@ -133,6 +166,10 @@ function emptyForm(): CreateContractDesignDto {
   return {
     complexId: '',
     complexName: '',
+    pdfLayoutKind: PdfLayoutKind.Standard,
+    contractNumberSequence: 1,
+    realEstateBankName: '',
+    pricePerMeter: null,
     header: {
       logoUrl: null,
       logoPosition: 'center',
@@ -165,7 +202,11 @@ function emptyForm(): CreateContractDesignDto {
       clauseGroups: defaultClauseGroups(),
       annexPage: 7,
       sellerSignName: '',
+      sellerFirstPartyName: '',
+      sellerNationalId: '',
       buyerSignTitle: 'الطرف الثاني (المشتري)',
+      sellerCompanyAddress: '',
+      sellerBankDetails: '',
     },
   }
 }
@@ -247,7 +288,7 @@ function syncComplexName() {
 function openCreate() {
   editingId.value = null
   Object.assign(form, emptyForm())
-  form.complexId = complexFilter.value || complexes.value[0]?.id || ''
+  form.complexId = auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || ''
   syncComplexName()
   clauseGroups.value = defaultClauseGroups()
   signaturesText.value = (form.footer?.signatures || []).join('\n')
@@ -261,6 +302,10 @@ function openEdit(row: ContractDesign) {
   Object.assign(form, {
     complexId: row.complexId,
     complexName: row.complexName || complexMap.value[row.complexId] || '',
+    pdfLayoutKind: normalizePdfLayoutKind(row.pdfLayoutKind),
+    contractNumberSequence: row.contractNumberSequence ?? 1,
+    realEstateBankName: row.realEstateBankName || '',
+    pricePerMeter: row.pricePerMeter ?? null,
     header: {
       logoUrl: row.header?.logoUrl || null,
       logoPosition: row.header?.logoPosition || 'right',
@@ -293,7 +338,11 @@ function openEdit(row: ContractDesign) {
       clauseGroups: normalizeClauseGroups(row.layout?.clauseGroups),
       annexPage: row.layout?.annexPage ?? row.layout?.paymentTablePage ?? 7,
       sellerSignName: row.layout?.sellerSignName || '',
+      sellerFirstPartyName: row.layout?.sellerFirstPartyName || '',
+      sellerNationalId: row.layout?.sellerNationalId || '',
       buyerSignTitle: row.layout?.buyerSignTitle || 'الطرف الثاني (المشتري)',
+      sellerCompanyAddress: row.layout?.sellerCompanyAddress || '',
+      sellerBankDetails: row.layout?.sellerBankDetails || '',
     },
   })
   clauseGroups.value = normalizeClauseGroups(row.layout?.clauseGroups)
@@ -326,6 +375,10 @@ function buildPayload(): CreateContractDesignDto {
   return {
     complexId: form.complexId,
     complexName: form.complexName,
+    pdfLayoutKind: normalizePdfLayoutKind(form.pdfLayoutKind),
+    contractNumberSequence: Math.max(1, Number(form.contractNumberSequence) || 1),
+    realEstateBankName: form.realEstateBankName?.trim() || null,
+    pricePerMeter: form.pricePerMeter != null && form.pricePerMeter > 0 ? form.pricePerMeter : null,
     header: {
       logoPosition: form.header?.logoPosition || 'right',
       title: form.header?.title || null,
@@ -357,8 +410,36 @@ function buildPayload(): CreateContractDesignDto {
       clauseGroups: normalizeClauseGroups(clauseGroups.value),
       annexPage: Number(form.layout?.annexPage ?? form.layout?.paymentTablePage ?? 7),
       sellerSignName: form.layout?.sellerSignName?.replace(/\r\n/g, '\n').trim() || null,
+      sellerFirstPartyName: form.layout?.sellerFirstPartyName?.trim() || null,
+      sellerNationalId: form.layout?.sellerNationalId?.trim() || null,
       buyerSignTitle: form.layout?.buyerSignTitle?.replace(/\r\n/g, '\n').trim() || 'الطرف الثاني (المشتري)',
+      sellerCompanyAddress: form.layout?.sellerCompanyAddress?.replace(/\r\n/g, '\n').trim() || null,
+      sellerBankDetails: form.layout?.sellerBankDetails?.trim() || null,
     },
+  }
+}
+
+async function applyDreamCityPack() {
+  if (!editingId.value) {
+    notify.warning('احفظ التصميم أولاً ثم عبّئ نصوص دريم سيتي')
+    return
+  }
+  if (!(await ask('تعبئة نصوص وبنود دريم سيتي لهذا المجمع فقط؟ سيتم استبدال بنود هذا المجمع.'))) {
+    return
+  }
+  applyingDreamCity.value = true
+  try {
+    // احفظ اختيار النمط أولاً ثم عبّئ المحتوى
+    form.pdfLayoutKind = PdfLayoutKind.DreamCity
+    await updateContractDesign(editingId.value, buildPayload())
+    const updated = await applyDreamCityContent(editingId.value)
+    openEdit(updated)
+    notify.success('تم تعبئة نصوص دريم سيتي لهذا المجمع فقط')
+    await load()
+  } catch (error) {
+    notify.error(getErrorMessage(error))
+  } finally {
+    applyingDreamCity.value = false
   }
 }
 
@@ -438,9 +519,12 @@ onMounted(async () => {
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -453,8 +537,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="5" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -466,19 +551,27 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column header="المجمع">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column header="المجمع" sortable>
           <template #body="{ data }">
             {{ data.complexName || complexMap[data.complexId] || '—' }}
           </template>
         </Column>
-        <Column header="العنوان">
+        <Column header="العنوان" sortable>
           <template #body="{ data }">{{ data.header?.title || '—' }}</template>
         </Column>
-        <Column header="البائع" style="width: 140px">
+        <Column header="نمط التخطيط" style="width: 110px" sortable>
+          <template #body="{ data }">{{ layoutKindLabel(data.pdfLayoutKind) }}</template>
+        </Column>
+        <Column header="البائع" style="width: 140px" sortable>
           <template #body="{ data }">{{ data.layout?.sellerSignName || '—' }}</template>
         </Column>
-        <Column header="اللون" style="width: 90px">
+        <Column header="اللون" style="width: 90px" sortable>
           <template #body="{ data }">
             <span
               class="color-dot"
@@ -487,7 +580,7 @@ onMounted(async () => {
             />
           </template>
         </Column>
-        <Column header="صور الوحدات" style="width: 110px">
+        <Column header="صور الوحدات" style="width: 110px" sortable>
           <template #body="{ data }">
             {{
               [data.assets?.cornerUnitImagePath, data.assets?.middleUnitImagePath, data.assets?.complexExteriorImagePath]
@@ -495,7 +588,7 @@ onMounted(async () => {
             }}/3
           </template>
         </Column>
-        <Column header="القالب" style="width: 90px">
+        <Column header="القالب" style="width: 90px" sortable>
           <template #body="{ data }">{{ data.templatePath ? 'مرفوع' : '—' }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -505,6 +598,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -518,6 +612,7 @@ onMounted(async () => {
         <div class="field full">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"
@@ -527,6 +622,60 @@ onMounted(async () => {
             append-to="body"
             @update:model-value="syncComplexName"
           />
+        </div>
+        <div class="field">
+          <label>تسلسل بداية أرقام العقود</label>
+          <InputNumber
+            v-model="form.contractNumberSequence"
+            :min="1"
+            :use-grouping="false"
+            class="w-full"
+          />
+          <small class="field-hint">عند إدخال 10 يبدأ ترقيم العقود الجديدة من 10 فما فوق</small>
+        </div>
+        <div class="field">
+          <label>اسم المصرف العقاري</label>
+          <InputText v-model="form.realEstateBankName" placeholder="مثال: المصرف العقاري العراقي" />
+          <small class="field-hint">يظهر كخيار عند إنشاء عقد بطريقة دفع «مصرف عقاري»</small>
+        </div>
+        <div class="field">
+          <label>سعر المتر (دينار عراقي)</label>
+          <InputNumber
+            v-model="form.pricePerMeter"
+            :min="0"
+            :max-fraction-digits="0"
+            class="w-full"
+            placeholder="مثال: 850000"
+          />
+          <small class="field-hint">يظهر في جدول البيانات المالية عند طباعة المصرف العقاري</small>
+        </div>
+        <div class="field full">
+          <label>نمط تخطيط العقد</label>
+          <Select
+            v-model="form.pdfLayoutKind"
+            :options="pdfLayoutKindOptions"
+            option-label="label"
+            option-value="value"
+            checkmark
+            append-to="body"
+          />
+          <small class="field-hint">
+            القياسي = سلوك التصاميم السابقة دون تغيير. دريم سيتي = ترتيب/بنود عقد دريم سيتي لهذا المجمع فقط.
+          </small>
+        </div>
+        <div v-if="isDreamCityLayout" class="field full dream-city-actions">
+          <Button
+            label="تعبئة نصوص دريم سيتي"
+            icon="pi pi-file-import"
+            severity="help"
+            outlined
+            :loading="applyingDreamCity"
+            :disabled="!editingId || applyingDreamCity || saving"
+            @click="applyDreamCityPack"
+          />
+          <small class="field-hint">
+            يملأ العنوان وبيانات الطرف الأول وبنود العقد من قالب دريم سيتي لهذا المجمع فقط، ويستبدل بنود المجمع الحالي.
+          </small>
         </div>
 
         <div class="field full section-title">الترويسة</div>
@@ -724,16 +873,48 @@ onMounted(async () => {
           />
         </div>
 
-        <div class="field full section-title">التواقيع</div>
+        <div class="field full section-title">الطرف الأول والتواقيع</div>
         <div class="field full">
-          <label>الطرف الأول (البائع) — الاسم</label>
+          <label>اسم الشركة (تحت الطرف الأول)</label>
           <Textarea
             v-model="form.layout!.sellerSignName"
             rows="3"
             auto-resize
-            placeholder="اسم الشركة / الممثل&#10;سطر إضافي إن لزم"
+            placeholder="اسم الشركة&#10;سطر إضافي إن لزم"
           />
-          <small class="field-hint">Enter لسطر جديد</small>
+          <small class="field-hint">يظهر مباشرة تحت «الطرف الاول ( البائع )» — Enter لسطر جديد</small>
+        </div>
+        <div class="field">
+          <label>اسم الطرف الأول</label>
+          <InputText
+            v-model="form.layout!.sellerFirstPartyName"
+            placeholder="اسم السيد / المدير المفوض"
+          />
+          <small class="field-hint">( يمثلها مديرها المفوض ) / السيد : …</small>
+        </div>
+        <div class="field">
+          <label>رقم هوية الطرف الأول</label>
+          <InputText
+            v-model="form.layout!.sellerNationalId"
+            placeholder="رقم البطاقة الوطنية"
+          />
+          <small class="field-hint">(صاحب البطاقة الوطنية المرقمة : …)</small>
+        </div>
+        <div v-if="isDreamCityLayout" class="field full">
+          <label>عنوان شركة الطرف الأول</label>
+          <Textarea
+            v-model="form.layout!.sellerCompanyAddress"
+            rows="2"
+            auto-resize
+            placeholder="بغداد – حي الوحدة – محلة 904 / زقاق 8 / مبنى 40"
+          />
+        </div>
+        <div v-if="isDreamCityLayout" class="field full">
+          <label>تفاصيل الحساب المصرفي للشركة</label>
+          <InputText
+            v-model="form.layout!.sellerBankDetails"
+            placeholder="مصرف الرافدين فرع ديالى 311"
+          />
         </div>
         <div class="field full">
           <label>تسمية الطرف الثاني</label>

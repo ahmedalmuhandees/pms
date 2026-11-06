@@ -2,12 +2,12 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
+import RememberedInput from '@/components/RememberedInput.vue'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import Dialog from 'primevue/dialog'
 import type { Block, Building, Complex, CreateBuildingDto, Floor, SalesContract, Unit } from '@/types'
-import { ContractStatus, ContractType, UnitStatus } from '@/types'
+import { ComplexLayoutType, ContractStatus, ContractType, UnitStatus } from '@/types'
 import {
   createBuilding, deleteBuilding, getBuildings, updateBuilding, type BuildingParams,
 } from '@/api/buildings'
@@ -31,6 +31,18 @@ interface BuildingStats {
   available: number
 }
 
+interface BuildingCardModel {
+  key: string
+  kind: 'building' | 'block'
+  title: string
+  subtitle: string
+  stats: BuildingStats
+  blockId: string
+  buildingIds: string[]
+  building?: Building
+  villaCount?: number
+}
+
 type AvailabilityFilter = 'all' | 'has-available' | 'has-sold' | 'fully-sold' | 'empty'
 
 const auth = useAuthStore()
@@ -47,14 +59,15 @@ const statsLoading = ref(false)
 
 const {
   items, loading, pageSize, total, search, load, onSearch, setFilter,
-} = usePagedList<Building, BuildingParams>(getBuildings)
+  setSortMode,
+  sortMode,} = usePagedList<Building, BuildingParams>(getBuildings)
 
 pageSize.value = 100
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const blockFilter = ref<string | null>(null)
 const availabilityFilter = ref<AvailabilityFilter>('all')
 const form = reactive<CreateBuildingDto>({ name: '', description: '', blockId: '' })
@@ -130,32 +143,165 @@ const statsByBuilding = computed(() => {
   return map
 })
 
-const filteredBuildings = computed(() => {
+/** إن كان الاسم مخزّناً بصيغة بلوك-رقم (B1-180) نعرض الرقم فقط */
+function displayBuildingName(building: Building): string {
+  const raw = (building.name || '').trim()
+  if (!raw) return 'بدون اسم'
+  const blockName = (blockMap.value[building.blockId] || '').trim()
+  if (blockName && raw.toLowerCase().startsWith(`${blockName.toLowerCase()}-`)) {
+    return raw.slice(blockName.length + 1)
+  }
+  const dashed = raw.match(/^[A-Za-z0-9]+-(\d+)$/)
+  if (dashed) return dashed[1]!
+  return raw
+}
+
+function buildingSortKey(building: Building): string {
+  return displayBuildingName(building)
+}
+
+function sumStats(ids: string[]): BuildingStats {
+  return ids.reduce(
+    (acc, id) => {
+      const s = statsByBuilding.value[id] ?? { total: 0, sold: 0, available: 0 }
+      return {
+        total: acc.total + s.total,
+        sold: acc.sold + s.sold,
+        available: acc.available + s.available,
+      }
+    },
+    { total: 0, sold: 0, available: 0 },
+  )
+}
+
+function matchesAvailability(stats: BuildingStats): boolean {
+  switch (availabilityFilter.value) {
+    case 'has-available':
+      return stats.available > 0
+    case 'has-sold':
+      return stats.sold > 0
+    case 'fully-sold':
+      return stats.total > 0 && stats.sold >= stats.total
+    case 'empty':
+      return stats.total === 0
+    default:
+      return true
+  }
+}
+
+const complexById = computed(() =>
+  Object.fromEntries(complexes.value.map((c) => [c.id, c])),
+)
+
+const blockComplexId = computed(() =>
+  Object.fromEntries(blocks.value.map((b) => [b.id, b.complexId])),
+)
+
+function isHorizontalBlock(blockId: string): boolean {
+  const complexId = blockComplexId.value[blockId]
+  const layoutType = complexId ? complexById.value[complexId]?.layoutType : null
+  if (layoutType === ComplexLayoutType.Horizontal) return true
+  if (layoutType === ComplexLayoutType.Vertical) return false
+
+  // احتياطي للمجمعات الأفقية غير المعلَّمة صراحةً: عدة فلل بوحدة واحدة لكل مبنى
+  const inBlock = items.value.filter((b) => b.blockId === blockId)
+  if (inBlock.length < 2 || statsLoading.value) return false
+  return inBlock.every((b) => (statsByBuilding.value[b.id]?.total ?? 0) === 1)
+}
+
+/** مباني ضمن نطاق البحث/المجمع/البلوك قبل تجميع الأفقي */
+const scopedBuildings = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return items.value.filter((b) => {
-    if (blockIdsInComplex.value && !blockIdsInComplex.value.has(b.blockId)) return false
+  return items.value
+    .filter((b) => {
+      if (blockIdsInComplex.value && !blockIdsInComplex.value.has(b.blockId)) return false
+      if (q) {
+        const name = (b.name || '').toLowerCase()
+        const display = displayBuildingName(b).toLowerCase()
+        const desc = (b.description || '').toLowerCase()
+        const block = (blockMap.value[b.blockId] || '').toLowerCase()
+        if (
+          !name.includes(q) &&
+          !display.includes(q) &&
+          !desc.includes(q) &&
+          !block.includes(q)
+        ) {
+          return false
+        }
+      }
+      return true
+    })
+    .slice()
+    .sort((a, b) =>
+      buildingSortKey(a).localeCompare(buildingSortKey(b), 'ar', {
+        numeric: true,
+        sensitivity: 'base',
+      }),
+    )
+})
 
-    if (q) {
-      const name = (b.name || '').toLowerCase()
-      const desc = (b.description || '').toLowerCase()
-      const block = (blockMap.value[b.blockId] || '').toLowerCase()
-      if (!name.includes(q) && !desc.includes(q) && !block.includes(q)) return false
-    }
+/**
+ * هيكل أفقي: كارد واحد لكل بلوك بإحصائيات مجمّعة للفلل.
+ * هيكل عمودي/مختلط: كارد لكل مبنى كما كان.
+ */
+const displayCards = computed((): BuildingCardModel[] => {
+  const horizontalByBlock = new Map<string, Building[]>()
+  const vertical: Building[] = []
 
-    const stats = statsByBuilding.value[b.id] ?? { total: 0, sold: 0, available: 0 }
-    switch (availabilityFilter.value) {
-      case 'has-available':
-        return stats.available > 0
-      case 'has-sold':
-        return stats.sold > 0
-      case 'fully-sold':
-        return stats.total > 0 && stats.sold >= stats.total
-      case 'empty':
-        return stats.total === 0
-      default:
-        return true
+  for (const building of scopedBuildings.value) {
+    if (isHorizontalBlock(building.blockId)) {
+      const list = horizontalByBlock.get(building.blockId) ?? []
+      list.push(building)
+      horizontalByBlock.set(building.blockId, list)
+    } else {
+      vertical.push(building)
     }
-  })
+  }
+
+  const cards: BuildingCardModel[] = []
+
+  for (const [blockId, group] of horizontalByBlock) {
+    const stats = sumStats(group.map((g) => g.id))
+    if (!matchesAvailability(stats)) continue
+    const blockName = blockMap.value[blockId] || 'بلوك'
+    cards.push({
+      key: `block-${blockId}`,
+      kind: 'block',
+      title: blockName,
+      subtitle: `${group.length} فيلا`,
+      stats,
+      blockId,
+      buildingIds: group.map((g) => g.id),
+      villaCount: group.length,
+    })
+  }
+
+  for (const building of vertical) {
+    const stats = statsByBuilding.value[building.id] ?? { total: 0, sold: 0, available: 0 }
+    if (!matchesAvailability(stats)) continue
+    cards.push({
+      key: building.id,
+      kind: 'building',
+      title: displayBuildingName(building),
+      subtitle: blockMap.value[building.blockId] || 'بلوك غير معروف',
+      stats,
+      blockId: building.blockId,
+      buildingIds: [building.id],
+      building,
+    })
+  }
+
+  return cards.sort((a, b) =>
+    a.title.localeCompare(b.title, 'ar', { numeric: true, sensitivity: 'base' }),
+  )
+})
+
+const cardsSummaryLabel = computed(() => {
+  const blocksCount = displayCards.value.filter((c) => c.kind === 'block').length
+  const buildingsCount = displayCards.value.filter((c) => c.kind === 'building').length
+  if (blocksCount > 0 && buildingsCount === 0) return `${blocksCount} بلوك`
+  if (blocksCount === 0) return `${buildingsCount} مبنى`
+  return `${blocksCount} بلوك و ${buildingsCount} مبنى`
 })
 
 async function loadLookups() {
@@ -187,7 +333,7 @@ function onBlockFilterChange(value: string | null) {
 
 function clearFilters() {
   search.value = ''
-  complexFilter.value = null
+  complexFilter.value = auth.scopedComplexId
   blockFilter.value = null
   availabilityFilter.value = 'all'
   setFilter('BlockId', undefined)
@@ -262,7 +408,19 @@ async function remove(row: Building) {
   }
 }
 
-function openBuildingContracts(building: Building) {
+function openCardContracts(card: BuildingCardModel) {
+  if (card.kind === 'block') {
+    router.push({
+      name: 'sales-contracts',
+      query: {
+        blockId: card.blockId,
+        blockName: card.title,
+      },
+    })
+    return
+  }
+  const building = card.building
+  if (!building) return
   router.push({
     name: 'sales-contracts',
     query: {
@@ -270,10 +428,6 @@ function openBuildingContracts(building: Building) {
       buildingName: building.name || building.id.slice(0, 8),
     },
   })
-}
-
-function statsFor(buildingId: string): BuildingStats {
-  return statsByBuilding.value[buildingId] ?? { total: 0, sold: 0, available: 0 }
 }
 
 onMounted(async () => {
@@ -288,16 +442,22 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <PageHeader title="المباني" subtitle="اختر مبنى لعرض عقود ومبيعات وحداته">
+    <PageHeader
+      title="المباني"
+      subtitle="في الهيكل الأفقي تُعرض إحصائيات الفلل مجمّعة لكل بلوك"
+    >
       <template v-if="auth.isSuperAdmin" #actions>
         <Button label="إضافة مبنى" icon="pi pi-plus" @click="openCreate" />
       </template>
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث عن مبنى..." @search="onSearch">
+      <FilterBar v-model:search="search"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode" placeholder="ابحث عن مبنى..." @search="onSearch">
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -338,7 +498,7 @@ onMounted(async () => {
       </FilterBar>
 
       <div v-if="!loading || items.length > 0" class="filter-summary">
-        عرض {{ filteredBuildings.length }} مبنى
+        عرض {{ cardsSummaryLabel }}
         <span v-if="complexFilter || blockFilter || availabilityFilter !== 'all' || search.trim()">
           بعد الفلترة
         </span>
@@ -348,49 +508,52 @@ onMounted(async () => {
         <div v-for="n in 6" :key="n" class="building-card building-card--skeleton" />
       </div>
 
-      <div v-else-if="filteredBuildings.length === 0" class="empty-box">لا توجد مباني مطابقة للفلاتر</div>
+      <div v-else-if="displayCards.length === 0" class="empty-box">لا توجد مباني مطابقة للفلاتر</div>
 
       <div v-else class="buildings-grid">
         <article
-          v-for="building in filteredBuildings"
-          :key="building.id"
+          v-for="card in displayCards"
+          :key="card.key"
           class="building-card"
+          :class="{ 'building-card--block': card.kind === 'block' }"
           role="button"
           tabindex="0"
-          @click="openBuildingContracts(building)"
-          @keydown.enter.prevent="openBuildingContracts(building)"
-          @keydown.space.prevent="openBuildingContracts(building)"
+          @click="openCardContracts(card)"
+          @keydown.enter.prevent="openCardContracts(card)"
+          @keydown.space.prevent="openCardContracts(card)"
         >
           <div class="building-card__head">
             <div class="building-card__icon" aria-hidden="true">
-              <i class="pi pi-building" />
+              <i :class="card.kind === 'block' ? 'pi pi-th-large' : 'pi pi-building'" />
             </div>
             <div class="building-card__titles">
-              <h3>{{ building.name || 'بدون اسم' }}</h3>
-              <p>{{ blockMap[building.blockId] || 'بلوك غير معروف' }}</p>
+              <h3>{{ card.title }}</h3>
+              <p>{{ card.subtitle }}</p>
             </div>
-            <div class="building-card__actions" @click.stop>
-              <RowActions @edit="openEdit(building)" @remove="remove(building)" />
+            <div v-if="card.kind === 'building' && card.building" class="building-card__actions" @click.stop>
+              <RowActions @edit="openEdit(card.building)" @remove="remove(card.building)" />
             </div>
           </div>
 
           <div class="building-card__stats" :class="{ 'is-loading': statsLoading }">
             <div class="stat">
               <span class="stat__label">الكلي</span>
-              <strong class="stat__value">{{ statsFor(building.id).total }}</strong>
+              <strong class="stat__value">{{ card.stats.total }}</strong>
             </div>
             <div class="stat is-sold">
               <span class="stat__label">المباع</span>
-              <strong class="stat__value">{{ statsFor(building.id).sold }}</strong>
+              <strong class="stat__value">{{ card.stats.sold }}</strong>
             </div>
             <div class="stat is-available">
               <span class="stat__label">المتاح</span>
-              <strong class="stat__value">{{ statsFor(building.id).available }}</strong>
+              <strong class="stat__value">{{ card.stats.available }}</strong>
             </div>
           </div>
 
           <div class="building-card__footer">
-            <span>عقود ومبيعات المبنى</span>
+            <span>
+              {{ card.kind === 'block' ? 'عقود ومبيعات البلوك' : 'عقود ومبيعات المبنى' }}
+            </span>
             <i class="pi pi-arrow-left" />
           </div>
         </article>
@@ -422,7 +585,7 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label>الاسم</label>
-          <InputText v-model="form.name" />
+          <RememberedInput v-model="form.name" memory-key="building.name" />
         </div>
         <div class="field">
           <label>الوصف</label>
@@ -480,6 +643,15 @@ onMounted(async () => {
   transform: translateY(-3px);
   border-color: color-mix(in srgb, var(--brand-mid) 28%, var(--border));
   box-shadow: 0 14px 28px rgba(6, 40, 48, 0.08);
+}
+
+.building-card--block {
+  background:
+    linear-gradient(160deg, color-mix(in srgb, #dceef2 80%, white), #fff 58%);
+}
+
+.building-card--block .building-card__icon {
+  background: linear-gradient(145deg, #2a9aad, #0d4f5c);
 }
 
 .building-card:focus-visible {

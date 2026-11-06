@@ -1,0 +1,1 @@
+import{a as e,s as t}from"./index-C5zNCBEs.js";async function n(n){return t(await e.get(`/api/Floors`,{params:n}))}async function r(n){return t(await e.post(`/api/Floors`,n))}async function i(n,r){return t(await e.put(`/api/Floors/${n}`,r))}async function a(n){return t(await e.delete(`/api/Floors/${n}`))}export{i,a as n,n as r,r as t};

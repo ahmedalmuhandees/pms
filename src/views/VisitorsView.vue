@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
+import RememberedInput from '@/components/RememberedInput.vue'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import Dialog from 'primevue/dialog'
@@ -23,6 +23,7 @@ import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { formatDate } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
@@ -34,7 +35,11 @@ const residentFilter = ref<string | null>(null)
 const visitDateModel = ref<Date | null>(null)
 
 const {
-  items, loading, page, pageSize, total, search, load, onSearch, setFilter, onLazyPage,
+  items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+  sortMode, onLazyPage,
 } = usePagedList<Visitor, VisitorParams>(getVisitors)
 
 const dialogVisible = ref(false)
@@ -151,12 +156,21 @@ onMounted(async () => {
   <div class="page">
     <PageHeader title="الزوار" subtitle="تسجيل زيارات المقيمين وأوقات الدخول والخروج">
       <template #actions>
+        <Button
+          label="مسح التصاريح"
+          icon="pi pi-qrcode"
+          severity="secondary"
+          outlined
+          @click="$router.push('/visitor-scan')"
+        />
         <Button label="إضافة زائر" icon="pi pi-plus" @click="openCreate" />
       </template>
     </PageHeader>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث باسم الزائر أو الهاتف..." @search="onSearch">
+      <FilterBar v-model:search="search" placeholder="ابحث باسم الزائر أو الهاتف..." @search="onSearch"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode">
         <template #filters>
           <Select
             v-model="residentFilter"
@@ -172,8 +186,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="7" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -185,15 +200,28 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column field="visitorName" header="اسم الزائر" />
-        <Column field="phone" header="الهاتف" style="width: 130px" />
-        <Column header="تاريخ الزيارة" style="width: 130px">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column field="visitorName" header="اسم الزائر"  sortable />
+        <Column field="phone" header="الهاتف" style="width: 130px"  sortable />
+        <Column field="visitReason" header="السبب" style="width: 140px" />
+        <Column header="الصلاحية" style="width: 130px">
+          <template #body="{ data }">{{ data.validUntil ? formatDate(data.validUntil) : '—' }}</template>
+        </Column>
+        <Column header="الحالة" style="width: 110px">
+          <template #body="{ data }">
+            {{ data.isUsed ? 'مستخدم' : 'ساري' }}
+          </template>
+        </Column>
+        <Column header="تاريخ الزيارة" style="width: 130px" sortable>
           <template #body="{ data }">{{ formatDate(data.visitDate) }}</template>
         </Column>
-        <Column field="entryTime" header="دخول" style="width: 110px" />
-        <Column field="exitTime" header="خروج" style="width: 110px" />
-        <Column header="المقيم">
+        <Column field="entryTime" header="دخول" style="width: 110px"  sortable />
+        <Column header="المقيم" sortable>
           <template #body="{ data }">{{ residentLabel(data.residentId) }}</template>
         </Column>
         <Column header="إجراءات" style="width: 130px">
@@ -203,6 +231,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -214,11 +243,11 @@ onMounted(async () => {
       <div class="form-grid">
         <div class="field">
           <label>اسم الزائر</label>
-          <InputText v-model="form.visitorName" />
+          <RememberedInput v-model="form.visitorName" memory-key="visitor.name" />
         </div>
         <div class="field">
           <label>الهاتف</label>
-          <InputText v-model="form.phone" />
+          <RememberedInput v-model="form.phone" memory-key="visitor.phone" />
         </div>
         <div class="field">
           <label>تاريخ الزيارة</label>
@@ -226,11 +255,15 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label>وقت الدخول</label>
-          <InputText v-model="form.entryTime" placeholder="09:00:00" />
+          <RememberedInput v-model="form.entryTime" memory-key="visitor.entryTime" placeholder="09:00:00" />
         </div>
         <div class="field">
           <label>وقت الخروج</label>
-          <InputText v-model="form.exitTime" placeholder="اختياري مثل 11:30:00" />
+          <RememberedInput
+            v-model="form.exitTime"
+            memory-key="visitor.exitTime"
+            placeholder="اختياري مثل 11:30:00"
+          />
         </div>
         <div class="field">
           <label>المقيم</label>

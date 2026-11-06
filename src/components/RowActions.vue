@@ -1,21 +1,45 @@
 <script setup lang="ts">
 defineProps<{
   showDetails?: boolean
+  showProfile?: boolean
   showPrint?: boolean
   showPdf?: boolean
+  showLoginCode?: boolean
 }>()
 
 defineEmits<{
   edit: []
   remove: []
   details: []
+  profile: []
   print: []
   pdf: []
+  loginCode: []
 }>()
 </script>
 
 <template>
   <div class="row-actions">
+    <button
+      v-if="showLoginCode"
+      type="button"
+      class="action-btn is-code"
+      v-tooltip.top="'رمز الدخول'"
+      aria-label="رمز الدخول"
+      @click="$emit('loginCode')"
+    >
+      <i class="pi pi-key" />
+    </button>
+    <button
+      v-if="showProfile"
+      type="button"
+      class="action-btn is-profile"
+      v-tooltip.top="'ملف الساكن'"
+      aria-label="ملف الساكن"
+      @click="$emit('profile')"
+    >
+      <i class="pi pi-user" />
+    </button>
     <button
       v-if="showDetails"
       type="button"
@@ -94,6 +118,18 @@ defineEmits<{
 
 .action-btn i {
   line-height: 1;
+}
+
+.action-btn.is-code:hover {
+  color: #9a6b1f;
+  background: rgba(154, 107, 31, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(154, 107, 31, 0.14);
+}
+
+.action-btn.is-profile:hover {
+  color: #5b4bb7;
+  background: rgba(91, 75, 183, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(91, 75, 183, 0.14);
 }
 
 .action-btn.is-view:hover {

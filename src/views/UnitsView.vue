@@ -27,6 +27,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
 
@@ -52,13 +53,18 @@ const {
   load,
   onSearch,
   setFilter,
+  setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+    sortMode,
   onLazyPage,
 } = usePagedList<Unit, UnitParams>(getUnits)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
-const complexFilter = ref<string | null>(null)
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const statusFilter = ref<string | null>(null)
 
 const emptyForm = (): CreateUnitDto => ({
@@ -95,7 +101,7 @@ async function loadLookups() {
 function resetForm() {
   editingId.value = null
   Object.assign(form, emptyForm(), {
-    complexId: complexFilter.value || complexes.value[0]?.id || '',
+    complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
     floorId: floors.value[0]?.id || '',
   })
 }
@@ -194,11 +200,14 @@ onMounted(async () => {
     <div class="data-panel">
       <FilterBar
         v-model:search="search"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode"
         placeholder="ابحث برقم الوحدة أو الملاحظات..."
         @search="onSearch"
       >
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexes"
             option-value="id"
@@ -234,6 +243,7 @@ onMounted(async () => {
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="7" />
       <div v-else class="table-wrap">
+        <TableSortCaption :sort-mode="sortMode" />
         <DataTable
           :value="items"
           :loading="loading"
@@ -248,20 +258,25 @@ onMounted(async () => {
           striped-rows
           size="small"
           @page="onLazyPage"
-        >
-          <Column field="unitNumber" header="رقم الوحدة" style="width: 120px" />
-          <Column header="النوع" style="width: 110px">
+        
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+          <Column field="unitNumber" header="رقم الوحدة" style="width: 120px"  sortable />
+          <Column header="النوع" style="width: 110px" sortable>
             <template #body="{ data }">{{ labelOf(unitTypeOptions, data.unitType) }}</template>
           </Column>
-          <Column header="الموقع" style="width: 150px">
+          <Column header="الموقع" style="width: 150px" sortable>
             <template #body="{ data }">{{ labelOf(unitUiOptions, data.unitUi) }}</template>
           </Column>
-          <Column header="الحالة" style="width: 110px">
+          <Column header="الحالة" style="width: 110px" sortable>
             <template #body="{ data }">{{ labelOf(unitStatusOptions, data.status) }}</template>
           </Column>
-          <Column field="area" header="المساحة" style="width: 100px" />
-          <Column field="bedrooms" header="غرف" style="width: 80px" />
-          <Column header="السعر" style="width: 120px">
+          <Column field="area" header="المساحة" style="width: 100px"  sortable />
+          <Column field="bedrooms" header="غرف" style="width: 80px"  sortable />
+          <Column header="السعر" style="width: 120px" sortable>
             <template #body="{ data }">{{ formatMoney(data.price) }}</template>
           </Column>
           <Column header="إجراءات" style="width: 150px">
@@ -292,6 +307,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select v-model="form.complexId" :options="complexes" option-value="id" placeholder="اختر المجمع">
+            :disabled="!auth.canSelectComplex"
             <template #option="{ option }">{{ option.nameAr || option.name || option.id }}</template>
             <template #value="{ value }">
               {{ complexes.find((c) => c.id === value)?.nameAr

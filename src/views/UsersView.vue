@@ -16,8 +16,12 @@ import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { asSelectOptions } from '@/utils/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
+import TableSortCaption from '@/components/TableSortCaption.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const notify = useNotify()
 const { ask } = useConfirmAction()
@@ -25,7 +29,11 @@ const complexes = ref<Complex[]>([])
 
 const {
   items, loading, page, pageSize, total, search, load, onSearch, onLazyPage,
-} = usePagedList(getUsers)
+  setSortMode,
+  onTableSort,
+  sortField,
+  sortOrder,
+    sortMode,} = usePagedList(getUsers)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
@@ -55,7 +63,9 @@ async function loadComplexes() {
 
 function openCreate() {
   editingId.value = null
-  Object.assign(form, emptyForm())
+  Object.assign(form, emptyForm(), {
+    complexId: auth.scopedComplexId,
+  })
   dialogVisible.value = true
 }
 
@@ -128,13 +138,16 @@ onMounted(async () => {
     <div class="data-panel">
       <FilterBar
         v-model:search="search"
+        v-model:sort-mode="sortMode"
+        @sort-change="setSortMode"
         placeholder="ابحث بالاسم أو البريد أو الهاتف..."
         @search="onSearch"
       />
 
       <TableSkeleton v-if="loading && items.length === 0" :rows="8" :columns="5" />
-      <DataTable
-        v-else
+      <template v-else>
+        <TableSortCaption :sort-mode="sortMode" />
+        <DataTable
         :value="items"
         :loading="loading"
         lazy
@@ -146,15 +159,20 @@ onMounted(async () => {
         striped-rows
         size="small"
         @page="onLazyPage"
-      >
-        <Column header="الاسم">
+      
+          sort-mode="single"
+          :sort-field="sortField"
+          :sort-order="sortOrder"
+          removable-sort
+          @sort="onTableSort">
+        <Column header="الاسم" sortable>
           <template #body="{ data }">
             {{ [data.firstName, data.lastName].filter(Boolean).join(' ') || '—' }}
           </template>
         </Column>
-        <Column field="email" header="البريد" />
-        <Column field="phone" header="الهاتف" style="width: 130px" />
-        <Column field="roleName" header="الدور" style="width: 120px" />
+        <Column field="email" header="البريد"  sortable />
+        <Column field="phone" header="الهاتف" style="width: 130px"  sortable />
+        <Column field="roleName" header="الدور" style="width: 120px"  sortable />
         <Column header="إجراءات" style="width: 130px">
           <template #body="{ data }">
             <RowActions @edit="openEdit(data)" @remove="remove(data)" />
@@ -162,6 +180,7 @@ onMounted(async () => {
         </Column>
         <template #empty><div class="empty-box">لا توجد بيانات</div></template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -194,6 +213,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"

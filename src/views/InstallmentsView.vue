@@ -49,6 +49,17 @@ import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import RowActions from '@/components/RowActions.vue'
 import TableSkeleton from '@/components/skeletons/TableSkeleton.vue'
+import { useAuthStore } from '@/stores/auth'
+import TableSortCaption from '@/components/TableSortCaption.vue'
+import {
+  nextTableSortMode,
+  sortByTableMode,
+  tableSortOrder,
+  tableSortToParams,
+  type TableSortMode,
+} from '@/utils/tableSort'
+
+const auth = useAuthStore()
 
 interface InstallmentRow extends Installment {
   customerName: string
@@ -78,7 +89,10 @@ const plans = ref<InstallmentPlan[]>([])
 const rows = ref<InstallmentRow[]>([])
 
 const search = ref('')
-const complexFilter = ref<string | null>(null)
+const sortMode = ref<TableSortMode>('latest')
+const sortField = ref('createdAt')
+const sortOrder = computed(() => tableSortOrder(sortMode.value))
+const complexFilter = ref<string | null>(auth.scopedComplexId)
 const blockFilter = ref<string | null>(null)
 const unitFilter = ref<string | null>(null)
 const dueOnly = ref(true)
@@ -134,22 +148,30 @@ const formPlanOptions = computed(() => {
 
 const displayedRows = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return rows.value
-    .filter((row) => {
-      if (dueOnly.value && !isInstallmentDue(row.status, row.dueDate)) return false
-      if (complexFilter.value && row.complexId !== complexFilter.value) return false
-      if (blockFilter.value && row.blockId !== blockFilter.value) return false
-      if (unitFilter.value && row.unitId !== unitFilter.value) return false
-      if (!q) return true
-      return (
-        row.customerName.toLowerCase().includes(q) ||
-        row.unitNumber.toLowerCase().includes(q) ||
-        row.blockName.toLowerCase().includes(q) ||
-        row.contractNumber.toLowerCase().includes(q)
-      )
-    })
-    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+  const filtered = rows.value.filter((row) => {
+    if (dueOnly.value && !isInstallmentDue(row.status, row.dueDate)) return false
+    if (complexFilter.value && row.complexId !== complexFilter.value) return false
+    if (blockFilter.value && row.blockId !== blockFilter.value) return false
+    if (unitFilter.value && row.unitId !== unitFilter.value) return false
+    if (!q) return true
+    return (
+      row.customerName.toLowerCase().includes(q) ||
+      row.unitNumber.toLowerCase().includes(q) ||
+      row.blockName.toLowerCase().includes(q) ||
+      row.contractNumber.toLowerCase().includes(q)
+    )
+  })
+  return sortByTableMode(filtered, sortMode.value, ['createdAt', 'dueDate'])
 })
+
+function onSortChange(mode: TableSortMode) {
+  sortMode.value = mode
+  void load()
+}
+
+function onTableSort() {
+  onSortChange(nextTableSortMode(sortMode.value))
+}
 
 const dueCount = computed(() => displayedRows.value.length)
 const dueAmount = computed(() =>
@@ -234,11 +256,14 @@ async function load() {
   try {
     const end = new Date()
     end.setHours(23, 59, 59, 999)
+    const sort = tableSortToParams(sortMode.value)
     const result = await getInstallments({
       Page: 1,
       PageSize: 500,
       ComplexId: complexFilter.value || undefined,
       DueTo: dueOnly.value ? end.toISOString() : undefined,
+      SortBy: sort.SortBy,
+      SortDirection: sort.SortDirection,
     })
     rows.value = enrich(result.items ?? [])
   } catch (error) {
@@ -277,7 +302,7 @@ function openCreate() {
     status: InstallmentStatus.Pending,
     paidDate: null,
     planID: '',
-    complexId: complexFilter.value || complexes.value[0]?.id || '',
+    complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
   })
   dialogVisible.value = true
 }
@@ -369,9 +394,15 @@ onMounted(async () => {
     </div>
 
     <div class="data-panel">
-      <FilterBar v-model:search="search" placeholder="ابحث بالعميل أو الوحدة أو البلوك أو رقم العقد...">
+      <FilterBar
+        v-model:search="search"
+        v-model:sort-mode="sortMode"
+        @sort-change="onSortChange"
+        placeholder="ابحث بالعميل أو الوحدة أو البلوك أو رقم العقد..."
+      >
         <template #filters>
           <Select
+            v-if="auth.canSelectComplex"
             v-model="complexFilter"
             :options="complexOptions"
             option-label="label"
@@ -406,8 +437,9 @@ onMounted(async () => {
       </FilterBar>
 
       <TableSkeleton v-if="loading && rows.length === 0" :rows="8" :columns="8" />
+      <template v-else>
+      <TableSortCaption :sort-mode="sortMode" />
       <DataTable
-        v-else
         :value="displayedRows"
         :loading="loading"
         paginator
@@ -415,33 +447,38 @@ onMounted(async () => {
         :rows-per-page-options="[10, 20, 50]"
         striped-rows
         size="small"
+        sort-mode="single"
+        :sort-field="sortField"
+        :sort-order="sortOrder"
+        removable-sort
+        @sort="onTableSort"
       >
-        <Column header="العميل">
+        <Column header="العميل" sortable>
           <template #body="{ data }">
             <div class="primary-cell">{{ data.customerName }}</div>
           </template>
         </Column>
-        <Column header="الوحدة" style="width: 110px">
+        <Column header="الوحدة" style="width: 110px" sortable>
           <template #body="{ data }">{{ data.unitNumber }}</template>
         </Column>
-        <Column header="البلوك" style="width: 120px">
+        <Column header="البلوك" style="width: 120px" sortable>
           <template #body="{ data }">{{ data.blockName }}</template>
         </Column>
-        <Column header="رقم العقد" style="width: 110px">
+        <Column header="رقم العقد" style="width: 110px" sortable>
           <template #body="{ data }">{{ data.contractNumber }}</template>
         </Column>
-        <Column header="الاستحقاق" style="width: 120px">
+        <Column header="الاستحقاق" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
         </Column>
-        <Column header="المبلغ" style="width: 120px">
+        <Column header="المبلغ" style="width: 120px" sortable>
           <template #body="{ data }">{{ formatMoney(data.amount) }}</template>
         </Column>
-        <Column header="المتبقي" style="width: 120px">
+        <Column header="المتبقي" style="width: 120px" sortable>
           <template #body="{ data }">
             <strong class="remain">{{ formatMoney(remainingOf(data)) }}</strong>
           </template>
         </Column>
-        <Column header="الحالة" style="width: 110px">
+        <Column header="الحالة" style="width: 110px" sortable>
           <template #body="{ data }">
             <span class="status-pill" :class="{ due: isInstallmentDue(data.status, data.dueDate) }">
               {{ installmentStatusLabel(data.status, data.dueDate) }}
@@ -459,6 +496,7 @@ onMounted(async () => {
           </div>
         </template>
       </DataTable>
+      </template>
     </div>
 
     <Dialog
@@ -471,6 +509,7 @@ onMounted(async () => {
         <div class="field">
           <label>المجمع</label>
           <Select
+            :disabled="!auth.canSelectComplex"
             v-model="form.complexId"
             :options="complexOptions"
             option-label="label"
