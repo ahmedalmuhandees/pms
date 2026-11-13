@@ -1,9 +1,3 @@
-<script setup lang="ts">
-import { listComplexSlugs } from '@/config/complexes'
-
-const slugs = listComplexSlugs()
-</script>
-
 <template>
   <div class="nf">
     <div class="nf__card">
@@ -13,10 +7,6 @@ const slugs = listComplexSlugs()
         لم يتم تحديد مجمع صالح في الرابط.
         <br />
         تواصل مع الفريق التقني للحصول على رابط الدخول الصحيح.
-      </p>
-      <p class="nf__hint" v-if="slugs.length">
-        أمثلة المسارات:
-        <code v-for="s in slugs" :key="s">/{{ s }}</code>
       </p>
     </div>
   </div>
@@ -64,21 +54,5 @@ p {
   color: var(--muted);
   line-height: 1.7;
   font-size: 0.98rem;
-}
-
-.nf__hint {
-  margin-top: 18px;
-  font-size: 0.85rem;
-}
-
-code {
-  display: inline-block;
-  margin: 6px 4px 0;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-weight: 700;
-  direction: ltr;
 }
 </style>
