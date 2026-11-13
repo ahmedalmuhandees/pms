@@ -1,11 +1,22 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { resolveComplexFromLocation } from '@/config/complexes'
 import { isStaleChunkError, reloadOnStaleChunk } from '@/utils/staleChunkReload'
 import { pathToPageKey } from '@/utils/pagePermissions'
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes: [
+/** /zhsc أو /hads — وإلا تُعرض صفحة 404 */
+export const complexLocation = resolveComplexFromLocation()
+
+const notFoundRoutes: RouteRecordRaw[] = [
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'complex-not-found',
+    component: () => import('@/views/ComplexNotFoundView.vue'),
+    meta: { public: true },
+  },
+]
+
+const appRoutes: RouteRecordRaw[] = [
     {
       path: '/login',
       name: 'login',
@@ -59,6 +70,12 @@ const router = createRouter({
           name: 'complexes',
           component: () => import('@/views/ComplexesView.vue'),
           meta: { pageKey: 'complexes' },
+        },
+        {
+          path: 'complex-ads',
+          name: 'complex-ads',
+          component: () => import('@/views/ComplexAdsView.vue'),
+          meta: { pageKey: 'complex-ads' },
         },
         {
           path: 'agents',
@@ -390,7 +407,11 @@ const router = createRouter({
         },
       ],
     },
-  ],
+]
+
+const router = createRouter({
+  history: createWebHistory(complexLocation.base),
+  routes: complexLocation.slug ? appRoutes : notFoundRoutes,
 })
 
 router.beforeEach((to) => {

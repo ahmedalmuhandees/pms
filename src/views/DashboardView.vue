@@ -668,7 +668,7 @@ onMounted(async () => {
   border-radius: 22px;
   background:
     radial-gradient(ellipse 70% 120% at 100% 0%, rgba(196, 107, 43, 0.18), transparent 55%),
-    linear-gradient(135deg, #0b3d4a 0%, #156574 52%, #1f8494 100%);
+    linear-gradient(135deg, #156574 0%, #156574 52%, #1f8494 100%);
   color: #f4fafb;
   box-shadow: 0 18px 40px rgba(6, 40, 48, 0.16);
 }

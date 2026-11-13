@@ -3,6 +3,7 @@
 export type PageKey =
   | 'dashboard'
   | 'complexes'
+  | 'complex-ads'
   | 'agents'
   | 'complex-builder'
   | 'horizontal-builder'
@@ -69,6 +70,7 @@ export const PAGE_PERMISSION_GROUPS: PagePermissionGroup[] = [
     label: 'الهيكل العقاري',
     items: [
       { key: 'complexes', label: 'المجمعات', path: '/complexes' },
+      { key: 'complex-ads', label: 'إعلانات التطبيق', path: '/complex-ads' },
       { key: 'agents', label: 'مدراء المجمعات', path: '/agents' },
       { key: 'complex-builder', label: 'هيكل عمودي', path: '/complex-builder' },
       { key: 'horizontal-builder', label: 'هيكل أفقي', path: '/horizontal-builder' },
@@ -90,7 +92,7 @@ export const PAGE_PERMISSION_GROUPS: PagePermissionGroup[] = [
       { key: 'resident-buildings', label: 'بناية الساكنين', path: '/resident-buildings' },
       { key: 'technicians', label: 'الفنيون', path: '/technicians' },
       { key: 'vehicles', label: 'المركبات', path: '/vehicles' },
-      { key: 'visitors', label: 'الزوار', path: '/visitors' },
+      { key: 'visitors', label: 'الزوار ومسح التصاريح', path: '/visitors' },
       { key: 'users', label: 'المستخدمون', path: '/users' },
       { key: 'monthly-invoices', label: 'فواتير الخدمة الشهرية', path: '/monthly-invoices' },
       { key: 'electricity-invoices', label: 'فواتير الكهرباء', path: '/electricity-invoices' },

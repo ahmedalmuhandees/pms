@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
+import { useComplexBrandStore } from '@/stores/complexBrand'
 import { useWhatsAppAutoAlerts } from '@/composables/useWhatsAppAutoAlerts'
 import type { PageKey } from '@/utils/pagePermissions'
 
@@ -11,6 +12,7 @@ useWhatsAppAutoAlerts()
 const STORAGE_KEY = 'sidebar-groups-open'
 
 const auth = useAuthStore()
+const brand = useComplexBrandStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -47,6 +49,7 @@ const allMenuGroups: MenuGroup[] = [
     collapsible: true,
     items: [
       { path: '/complexes', label: 'المجمعات', icon: 'pi pi-building', pageKey: 'complexes' },
+      { path: '/complex-ads', label: 'إعلانات التطبيق', icon: 'pi pi-images', pageKey: 'complex-ads' },
       { path: '/agents', label: 'مدراء المجمعات', icon: 'pi pi-briefcase', pageKey: 'agents' },
       { path: '/complex-builder', label: 'هيكل عمودي', icon: 'pi pi-building', pageKey: 'complex-builder' },
       { path: '/horizontal-builder', label: 'هيكل أفقي', icon: 'pi pi-home', pageKey: 'horizontal-builder' },
@@ -96,13 +99,13 @@ const allMenuGroups: MenuGroup[] = [
         kind: 'submenu',
         key: 'visitors-group',
         label: 'الزوار',
-        icon: 'pi pi-envelope',
+        icon: 'pi pi-qrcode',
         children: [
           { path: '/visitors', label: 'سجل الزوار', icon: 'pi pi-list', pageKey: 'visitors' },
           {
             path: '/visitor-scan',
             label: 'مسح التصاريح',
-            icon: 'pi pi-qrcode',
+            icon: 'pi pi-camera',
             pageKey: 'visitors',
           },
         ],
@@ -310,7 +313,10 @@ const activePath = computed(() => route.path)
 
 function isActive(path: string) {
   if (path === '/') return activePath.value === '/'
-  return activePath.value === path || activePath.value.startsWith(`${path}/`)
+  // لا تُفعَّل /visitors عند فتح /visitor-scan (كلاهما يبدأ بـ /visitor)
+  if (activePath.value === path) return true
+  if (activePath.value.startsWith(`${path}/`)) return true
+  return false
 }
 
 function entryHasActive(item: MenuEntry) {
@@ -375,9 +381,10 @@ function logout() {
     <aside class="sidebar">
       <div class="sidebar-glow" aria-hidden="true" />
       <div class="brand">
-        <div class="brand-mark">مج</div>
+        <img v-if="brand.logo" class="brand-logo" :src="brand.logo" :alt="brand.name" />
+        <div v-else class="brand-mark">مج</div>
         <div>
-          <div class="brand-title">إدارة المجمعات</div>
+          <div class="brand-title">{{ brand.name }}</div>
           <div class="brand-sub">نظام إدارة العقارات</div>
         </div>
       </div>
@@ -535,6 +542,16 @@ function logout() {
   place-items: center;
   font-weight: 800;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 4px;
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
 

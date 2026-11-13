@@ -23,11 +23,15 @@ export interface PaginationParams {
 export interface LoginRequest {
   email: string
   password: string
+  complexId?: string | null
+  complexSlug?: string | null
 }
 
 export interface ResidentLoginRequest {
   phone: string
   code: string
+  complexId?: string | null
+  complexSlug?: string | null
 }
 
 export interface UserInfo {
@@ -596,6 +600,10 @@ export interface Vehicle {
   model: string | null
   color: string | null
   parkingNumber: string | null
+  vehicleType?: number | null
+  manufacturer?: string | null
+  year?: number | null
+  notes?: string | null
   residentId: string
   createdAt: string
 }
@@ -605,6 +613,10 @@ export interface CreateVehicleDto {
   model?: string | null
   color?: string | null
   parkingNumber?: string | null
+  vehicleType?: number | null
+  manufacturer?: string | null
+  year?: number | null
+  notes?: string | null
   residentId: string
 }
 

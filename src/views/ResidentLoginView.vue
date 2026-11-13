@@ -1,15 +1,27 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
+import { useComplexBrandStore } from '@/stores/complexBrand'
 import { getErrorMessage } from '@/api/client'
 import { useNotify } from '@/composables/useNotify'
 
 const auth = useAuthStore()
+const brand = useComplexBrandStore()
 const router = useRouter()
 const notify = useNotify()
+
+const pageStyle = computed(() => {
+  const bg = brand.loginBackground
+  if (!bg) return {}
+  return {
+    backgroundImage: `linear-gradient(145deg, color-mix(in srgb, ${brand.primaryColor} 72%, transparent), color-mix(in srgb, ${brand.primaryColor} 45%, transparent)), url(${bg})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }
+})
 
 const loading = ref(false)
 const form = reactive({
@@ -27,6 +39,7 @@ async function onSubmit() {
     await auth.residentLogin({
       phone: form.phone.trim(),
       code: form.code.trim(),
+      ...brand.loginScope(),
     })
     notify.success('تم تسجيل الدخول بنجاح')
     await router.replace('/resident-home')
@@ -39,7 +52,7 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="login-page">
+  <div class="login-page" :style="pageStyle">
     <div class="login-atmosphere" aria-hidden="true">
       <div class="orb orb-a" />
       <div class="orb orb-b" />
@@ -48,8 +61,9 @@ async function onSubmit() {
 
     <div class="login-shell">
       <div class="login-aside">
-        <div class="aside-mark">سك</div>
-        <h1>بوابة الساكنين</h1>
+        <img v-if="brand.logo" class="aside-logo" :src="brand.logo" :alt="brand.name" />
+        <div v-else class="aside-mark">سك</div>
+        <h1>بوابة ساكني {{ brand.name }}</h1>
         <p>ادخل برقم هاتفك ورمز الدخول الذي حصلت عليه من إدارة المجمع.</p>
         <ul class="aside-points">
           <li>دخول آمن برقم الهاتف</li>
@@ -101,7 +115,19 @@ async function onSubmit() {
   place-items: center;
   padding: 28px;
   overflow: hidden;
-  background: linear-gradient(145deg, #1a2e1f 0%, #243f2c 45%, #16241b 100%);
+  background-color: var(--brand-dark, #16241b);
+  background-repeat: no-repeat;
+}
+
+.aside-logo {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 8px;
+  margin-bottom: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
 }
 
 .login-atmosphere {

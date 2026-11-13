@@ -1,18 +1,30 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
+import { useComplexBrandStore } from '@/stores/complexBrand'
 import { getErrorMessage } from '@/api/client'
 import { useNotify } from '@/composables/useNotify'
 import { pathToPageKey } from '@/utils/pagePermissions'
 
 const auth = useAuthStore()
+const brand = useComplexBrandStore()
 const router = useRouter()
 const route = useRoute()
 const notify = useNotify()
+
+const pageStyle = computed(() => {
+  const bg = brand.loginBackground
+  if (!bg) return {}
+  return {
+    backgroundImage: `linear-gradient(145deg, color-mix(in srgb, ${brand.primaryColor} 72%, transparent), color-mix(in srgb, ${brand.primaryColor} 45%, transparent)), url(${bg})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  }
+})
 
 const loading = ref(false)
 const form = reactive({
@@ -27,7 +39,11 @@ async function onSubmit() {
   }
   loading.value = true
   try {
-    await auth.login({ email: form.email, password: form.password })
+    await auth.login({
+      email: form.email,
+      password: form.password,
+      ...brand.loginScope(),
+    })
     notify.success('تم تسجيل الدخول بنجاح')
     const requested = typeof route.query.redirect === 'string' ? route.query.redirect : ''
     let target =
@@ -46,7 +62,7 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="login-page">
+  <div class="login-page" :style="pageStyle">
     <div class="login-atmosphere" aria-hidden="true">
       <div class="orb orb-a" />
       <div class="orb orb-b" />
@@ -55,8 +71,9 @@ async function onSubmit() {
 
     <div class="login-shell">
       <div class="login-aside">
-        <div class="aside-mark">مج</div>
-        <h1>إدارة المجمعات السكنية</h1>
+        <img v-if="brand.logo" class="aside-logo" :src="brand.logo" :alt="brand.name" />
+        <div v-else class="aside-mark">مج</div>
+        <h1>{{ brand.name }}</h1>
         <p>منصة احترافية لإدارة المجمعات والوحدات والعملاء بكفاءة عالية.</p>
         <ul class="aside-points">
           <li>إدارة هرمية كاملة للمجمع</li>
@@ -68,7 +85,7 @@ async function onSubmit() {
       <div class="login-panel">
         <div class="panel-eyebrow">تسجيل الدخول</div>
         <div class="login-brand">مرحباً بعودتك</div>
-        <p class="login-desc">أدخل بياناتك للوصول إلى لوحة التحكم</p>
+        <p class="login-desc">أدخل بياناتك للوصول إلى لوحة التحكم — {{ brand.name }}</p>
 
         <form class="login-form" @submit.prevent="onSubmit">
           <div class="field">
@@ -101,7 +118,19 @@ async function onSubmit() {
   place-items: center;
   padding: 28px;
   overflow: hidden;
-  background: linear-gradient(145deg, #062830 0%, #0b3d4a 45%, #0a2f38 100%);
+  background-color: var(--brand-dark, #062830);
+  background-repeat: no-repeat;
+}
+
+.aside-logo {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 8px;
+  margin-bottom: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
 }
 
 .login-atmosphere {

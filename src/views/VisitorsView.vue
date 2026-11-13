@@ -214,7 +214,13 @@ onMounted(async () => {
         </Column>
         <Column header="الحالة" style="width: 110px">
           <template #body="{ data }">
-            {{ data.isUsed ? 'مستخدم' : 'ساري' }}
+            {{
+              data.isUsed
+                ? 'مستخدم'
+                : data.validUntil && new Date(data.validUntil) < new Date()
+                  ? 'منتهي'
+                  : 'ساري'
+            }}
           </template>
         </Column>
         <Column header="تاريخ الزيارة" style="width: 130px" sortable>

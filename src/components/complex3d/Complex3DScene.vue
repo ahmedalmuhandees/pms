@@ -217,7 +217,7 @@ function towerY(building: SceneBuildingMesh) {
     </TresMesh>
     <TresMesh :position="[0, 2.55, 0.32]" :cast-shadow="true">
       <TresBoxGeometry :args="[Math.min(14, Math.max(7, layout.gate.name.length * 0.55)), 1.15, 0.14]" />
-      <TresMeshStandardMaterial color="#0b3d4a" :roughness="0.45" />
+      <TresMeshStandardMaterial color="#156574" :roughness="0.45" />
     </TresMesh>
     <Html :position="[0, 2.55, 0.48]" center :distance-factor="18" wrapper-class="c3d-html">
       <div class="c3d-gate-sign">{{ layout.gate.name }}</div>

@@ -74,7 +74,10 @@ apiClient.interceptors.response.use(
       setStoredToken(null)
       setStoredAuthKind(null)
       localStorage.removeItem('pms_user')
-      const target = kind === 'resident' ? '/resident-login' : '/login'
+      // الحفاظ على بادئة المجمع (/zhsc أو /hads)
+      const first = window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase() || ''
+      const portalPrefix = first && ['zhsc', 'hads'].includes(first) ? `/${first}` : ''
+      const target = `${portalPrefix}${kind === 'resident' ? '/resident-login' : '/login'}`
       if (window.location.pathname !== target) {
         window.location.href = target
       }

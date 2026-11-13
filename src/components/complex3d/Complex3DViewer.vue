@@ -162,7 +162,7 @@ onUnmounted(() => {
   z-index: 80;
   display: flex;
   flex-direction: column;
-  background: #0b3d4a;
+  background: #156574;
 }
 
 .c3d__bar {
@@ -171,7 +171,7 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  background: rgba(11, 61, 74, 0.94);
+  background: rgba(21, 101, 116, 0.94);
   color: #fff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -320,7 +320,7 @@ onUnmounted(() => {
 .c3d-label {
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(11, 61, 74, 0.82);
+  background: rgba(21, 101, 116, 0.82);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -351,7 +351,7 @@ onUnmounted(() => {
 .c3d-gate-sign {
   padding: 6px 14px;
   border-radius: 6px;
-  background: #0b3d4a;
+  background: #156574;
   color: #fff;
   font-size: 15px;
   font-weight: 800;
