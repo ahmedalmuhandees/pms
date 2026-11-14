@@ -1,0 +1,1 @@
+import{c as e,u as t}from"./index-BbjuUimd.js";async function n(n){return t(await e.get(`/api/ServiceTypes`,{params:n}))}async function r(n){return t(await e.post(`/api/ServiceTypes`,n))}async function i(n,r){return t(await e.put(`/api/ServiceTypes/${n}`,r))}async function a(n){return t(await e.delete(`/api/ServiceTypes/${n}`))}export{i,a as n,n as r,r as t};

@@ -92,6 +92,10 @@ export interface Complex {
   openingDate: string | null
   status: string | null
   layoutType: ComplexLayoutType | null
+  portalSlug?: string | null
+  primaryColor?: string | null
+  logoUrl?: string | null
+  loginBackgroundUrl?: string | null
   createdAt: string
 }
 
@@ -106,6 +110,8 @@ export interface CreateComplexDto {
   openingDate?: string | null
   status?: string | null
   layoutType?: ComplexLayoutType | null
+  portalSlug?: string | null
+  primaryColor?: string | null
 }
 
 export type UpdateComplexDto = CreateComplexDto

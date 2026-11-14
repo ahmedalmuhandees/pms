@@ -1,32 +1,31 @@
 /**
  * خريطة إعدادات المجمعات — المسار الأول في الدومين يحدد المجمع.
  * مثال: https://complex.solidcode-iq.com/zhsc
+ *
+ * القيم هنا احتياطية محلية؛ المصدر الأساسي بعد التحميل هو
+ * GET /api/Auth/portal/{slug} (من حقول المجمع في قاعدة البيانات).
  */
 export interface ComplexBrandConfig {
-  /** مفتاح المسار (zhsc | hads) */
+  /** مفتاح المسار */
   slug: string
   /** الاسم الظاهر */
   name: string
-  /** معرّف المجمع في قاعدة البيانات — يُرسل مع تسجيل الدخول لعزل الخصوصية */
+  /** معرّف المجمع في قاعدة البيانات */
   complexId: string
   /** اللون الأساسي */
   primaryColor: string
-  /** شعار المجمع (مسار من public) */
+  /** شعار المجمع */
   logo: string
   /** خلفية صفحة تسجيل الدخول */
   loginBackground: string
 }
 
-const zhscId =
-  (import.meta.env.VITE_COMPLEX_ZHSC_ID as string | undefined)?.trim() ||
-  '08df1fb2-f274-4c28-85ea-eb38f9d1a1c4'
-const hadsId = (import.meta.env.VITE_COMPLEX_HADS_ID as string | undefined)?.trim() || ''
-
+/** احتياطي ثابت للمجمعات المعروفة قبل جلب API */
 export const COMPLEX_MAP: Record<string, ComplexBrandConfig> = {
   zhsc: {
     slug: 'zhsc',
     name: 'مجمع الزهراء السكني',
-    complexId: zhscId,
+    complexId: '',
     primaryColor: '#09413c',
     logo: '/contract-assets/alzahraa/logoalzahraa.png',
     loginBackground: '/contract-assets/alzahraa/bachalzahraa.svg',
@@ -34,18 +33,24 @@ export const COMPLEX_MAP: Record<string, ComplexBrandConfig> = {
   hads: {
     slug: 'hads',
     name: 'مجمع الهادي السكني',
-    complexId: hadsId,
+    complexId: '',
     primaryColor: '#1a1b31',
     logo: '/contract-assets/alhadee/logoalhadee.svg',
     loginBackground: '/contract-assets/alhadee/backalhadee.svg',
   },
 }
 
-export type ComplexSlug = keyof typeof COMPLEX_MAP
+const SLUG_RE = /^[a-z0-9]{2,32}$/
+
+export function isValidPortalSlug(slug: string | null | undefined): boolean {
+  if (!slug) return false
+  return SLUG_RE.test(slug.trim().toLowerCase())
+}
 
 export function getComplexConfig(slug: string | null | undefined): ComplexBrandConfig | null {
   if (!slug) return null
-  return COMPLEX_MAP[slug.toLowerCase()] ?? null
+  const key = slug.toLowerCase()
+  return COMPLEX_MAP[key] ?? null
 }
 
 export function listComplexSlugs(): string[] {
@@ -53,28 +58,32 @@ export function listComplexSlugs(): string[] {
 }
 
 export interface ResolvedComplexLocation {
-  /** مفتاح المجمع إن وُجد */
   slug: string | null
-  /** قاعدة Vue Router مثل /zhsc/ */
   base: string
-  /** إعدادات العلامة إن وُجدت */
   config: ComplexBrandConfig | null
 }
 
-/** يستخرج مفتاح المجمع من أول جزء في المسار */
+/** يستخرج مفتاح المجمع من أول جزء في المسار (أي slug صالح، ليس فقط القائمة الثابتة) */
 export function resolveComplexFromLocation(
   pathname = typeof window !== 'undefined' ? window.location.pathname : '/',
 ): ResolvedComplexLocation {
   const parts = pathname.split('/').filter(Boolean)
   const maybe = parts[0]?.toLowerCase() ?? ''
-  const config = getComplexConfig(maybe)
-  if (!config) {
+  if (!isValidPortalSlug(maybe)) {
     return { slug: null, base: '/', config: null }
   }
+  const fallback = getComplexConfig(maybe)
   return {
-    slug: config.slug,
-    base: `/${config.slug}/`,
-    config,
+    slug: maybe,
+    base: `/${maybe}/`,
+    config: fallback ?? {
+      slug: maybe,
+      name: 'إدارة المجمعات السكنية',
+      complexId: '',
+      primaryColor: '#0b3d4a',
+      logo: '/contract-assets/logo.png',
+      loginBackground: '',
+    },
   }
 }
 

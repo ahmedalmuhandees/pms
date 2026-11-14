@@ -1,1 +1,0 @@
-var e=`https://apicomplex.solidcode-iq.com`;function t(t){return t?t.startsWith(`http://`)||t.startsWith(`https://`)||t.startsWith(`blob:`)?t:t.startsWith(`/`)?`${e}${t}`:`${e}/${t}`:``}function n(e){if(!e)return``;let t=e.split(`/`);return t[t.length-1]||e}export{t as n,n as t};

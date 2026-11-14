@@ -21,3 +21,18 @@ export async function getMe() {
   const res = await apiClient.get<ApiResponse<UserInfo>>('/api/Auth/me')
   return unwrap(res)
 }
+
+export interface ComplexPortalInfo {
+  slug: string
+  complexId: string
+  name?: string | null
+  nameAr?: string | null
+  primaryColor?: string | null
+  logoUrl?: string | null
+  loginBackgroundUrl?: string | null
+}
+
+export async function getPortal(slug: string) {
+  const res = await apiClient.get<ApiResponse<ComplexPortalInfo>>(`/api/Auth/portal/${encodeURIComponent(slug)}`)
+  return unwrap(res)
+}

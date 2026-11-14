@@ -5,6 +5,7 @@ import RememberedInput from '@/components/RememberedInput.vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
+import ColorPicker from 'primevue/colorpicker'
 import Dialog from 'primevue/dialog'
 import Paginator from 'primevue/paginator'
 import type { Complex, CreateComplexDto } from '@/types'
@@ -14,6 +15,7 @@ import {
   deleteComplex,
   getComplexes,
   updateComplex,
+  uploadComplexBrand,
 } from '@/api/complexes'
 import { getErrorMessage } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
@@ -24,6 +26,7 @@ import {
   complexLayoutTypeOptions,
   labelOf,
 } from '@/utils/enums'
+import { resolveMediaUrl } from '@/utils/media'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import CardGridSkeleton from '@/components/skeletons/CardGridSkeleton.vue'
@@ -49,6 +52,11 @@ const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const openingDateModel = ref<Date | null>(null)
+const logoFile = ref<File | null>(null)
+const backgroundFile = ref<File | null>(null)
+const logoPreview = ref('')
+const backgroundPreview = ref('')
+const colorHex = ref('0b3d4a')
 
 const form = reactive<CreateComplexDto>({
   name: '',
@@ -61,11 +69,18 @@ const form = reactive<CreateComplexDto>({
   openingDate: null,
   status: 'Active',
   layoutType: ComplexLayoutType.HorizontalVertical,
+  portalSlug: '',
+  primaryColor: '#0b3d4a',
 })
 
 function resetForm() {
   editingId.value = null
   openingDateModel.value = null
+  logoFile.value = null
+  backgroundFile.value = null
+  logoPreview.value = ''
+  backgroundPreview.value = ''
+  colorHex.value = '0b3d4a'
   Object.assign(form, {
     name: '',
     nameAr: '',
@@ -77,6 +92,8 @@ function resetForm() {
     openingDate: null,
     status: 'Active',
     layoutType: ComplexLayoutType.HorizontalVertical,
+    portalSlug: '',
+    primaryColor: '#0b3d4a',
   })
 }
 
@@ -87,6 +104,8 @@ function openCreate() {
 
 function openEdit(row: Complex) {
   editingId.value = row.id
+  const color = (row.primaryColor || '#0b3d4a').replace('#', '')
+  colorHex.value = color
   Object.assign(form, {
     name: row.name,
     nameAr: row.nameAr,
@@ -98,22 +117,51 @@ function openEdit(row: Complex) {
     openingDate: row.openingDate,
     status: row.status,
     layoutType: row.layoutType ?? ComplexLayoutType.HorizontalVertical,
+    portalSlug: row.portalSlug || '',
+    primaryColor: row.primaryColor || '#0b3d4a',
   })
+  logoPreview.value = resolveMediaUrl(row.logoUrl)
+  backgroundPreview.value = resolveMediaUrl(row.loginBackgroundUrl)
+  logoFile.value = null
+  backgroundFile.value = null
   openingDateModel.value = row.openingDate ? new Date(row.openingDate) : null
   dialogVisible.value = true
 }
 
+function onLogoPick(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  logoFile.value = file
+  logoPreview.value = file ? URL.createObjectURL(file) : logoPreview.value
+}
+
+function onBackgroundPick(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  backgroundFile.value = file
+  backgroundPreview.value = file ? URL.createObjectURL(file) : backgroundPreview.value
+}
+
 async function save() {
   form.openingDate = openingDateModel.value ? openingDateModel.value.toISOString() : null
+  form.primaryColor = `#${colorHex.value.replace('#', '')}`
+  form.portalSlug = (form.portalSlug || '').trim().toLowerCase() || null
   saving.value = true
   try {
-    if (editingId.value) {
-      await updateComplex(editingId.value, { ...form })
-      notify.success('تم تحديث المجمع')
+    let id = editingId.value
+    if (id) {
+      await updateComplex(id, { ...form })
     } else {
-      await createComplex({ ...form })
-      notify.success('تم إنشاء المجمع')
+      const created = await createComplex({ ...form })
+      id = created.id
     }
+    if (id && logoFile.value) {
+      await uploadComplexBrand(id, 'logo', logoFile.value)
+    }
+    if (id && backgroundFile.value) {
+      await uploadComplexBrand(id, 'login-background', backgroundFile.value)
+    }
+    notify.success(editingId.value ? 'تم تحديث المجمع' : 'تم إنشاء المجمع')
     dialogVisible.value = false
     await load()
   } catch (error) {
@@ -200,6 +248,18 @@ onMounted(() => {
             <i class="pi pi-sitemap" />
             <span>التخطيط: {{ labelOf(complexLayoutTypeOptions, item.layoutType) }}</span>
           </div>
+          <div v-if="item.portalSlug" class="meta-row">
+            <i class="pi pi-link" />
+            <span>/{{ item.portalSlug }}/login</span>
+          </div>
+          <div v-if="item.primaryColor" class="meta-row">
+            <span
+              class="color-dot"
+              :style="{ background: item.primaryColor }"
+              :title="item.primaryColor"
+            />
+            <span>{{ item.primaryColor }}</span>
+          </div>
         </div>
 
         <div class="card-actions">
@@ -237,7 +297,7 @@ onMounted(() => {
       v-model:visible="dialogVisible"
       modal
       :header="editingId ? 'تعديل مجمع' : 'إضافة مجمع'"
-      :style="{ width: '560px' }"
+      :style="{ width: '640px' }"
       :breakpoints="{ '960px': '95vw' }"
     >
       <div class="form-grid">
@@ -248,6 +308,37 @@ onMounted(() => {
         <div class="field">
           <label>الاسم بالإنجليزي</label>
           <RememberedInput v-model="form.name" memory-key="complex.name" />
+        </div>
+        <div class="field">
+          <label>مفتاح المسار (بوابة الدخول)</label>
+          <RememberedInput
+            v-model="form.portalSlug"
+            memory-key="complex.portalSlug"
+            placeholder="مثال: zhsc"
+          />
+          <small class="hint">رابط الدخول: /{{ form.portalSlug || 'slug' }}/login</small>
+        </div>
+        <div class="field">
+          <label>لون الثيم</label>
+          <div class="color-row">
+            <ColorPicker v-model="colorHex" format="hex" />
+            <RememberedInput v-model="colorHex" memory-key="complex.primaryColor" />
+          </div>
+        </div>
+        <div class="field">
+          <label>شعار المجمع</label>
+          <input type="file" accept="image/*,.svg" @change="onLogoPick" />
+          <img v-if="logoPreview" class="brand-preview" :src="logoPreview" alt="logo" />
+        </div>
+        <div class="field">
+          <label>خلفية تسجيل الدخول</label>
+          <input type="file" accept="image/*,.svg" @change="onBackgroundPick" />
+          <img
+            v-if="backgroundPreview"
+            class="brand-preview is-wide"
+            :src="backgroundPreview"
+            alt="background"
+          />
         </div>
         <div class="field">
           <label>المدينة</label>
@@ -307,6 +398,44 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted, #6b7280);
+  font-size: 0.8rem;
+}
+
+.brand-preview {
+  display: block;
+  margin-top: 8px;
+  max-height: 64px;
+  width: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.brand-preview.is-wide {
+  max-height: 96px;
+  width: 100%;
+  object-fit: cover;
+}
+
 .complex-grid {
   position: relative;
   display: grid;

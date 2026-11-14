@@ -32,3 +32,11 @@ export async function deleteComplex(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/Complexes/${id}`)
   return unwrap(res)
 }
+
+/** kind: logo | login-background */
+export async function uploadComplexBrand(id: string, kind: 'logo' | 'login-background', file: File) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await apiClient.post<ApiResponse<Complex>>(`/api/Complexes/${id}/brand/${kind}`, fd)
+  return unwrap(res)
+}

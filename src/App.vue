@@ -6,8 +6,11 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useComplexBrandStore } from '@/stores/complexBrand'
 
 const brand = useComplexBrandStore()
-onMounted(() => brand.apply())
 brand.apply()
+onMounted(() => {
+  brand.apply()
+  void brand.loadPortal()
+})
 </script>
 
 <template>

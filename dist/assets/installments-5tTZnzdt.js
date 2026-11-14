@@ -1,1 +1,0 @@
-import{a as e,s as t}from"./index-C5zNCBEs.js";async function n(n){return t(await e.get(`/api/Installments`,{params:n}))}async function r(n){return t(await e.post(`/api/Installments`,n))}async function i(n,r){return t(await e.put(`/api/Installments/${n}`,r))}async function a(n){return t(await e.delete(`/api/Installments/${n}`))}export{i,a as n,n as r,r as t};

@@ -74,9 +74,9 @@ apiClient.interceptors.response.use(
       setStoredToken(null)
       setStoredAuthKind(null)
       localStorage.removeItem('pms_user')
-      // الحفاظ على بادئة المجمع (/zhsc أو /hads)
+      // الحفاظ على بادئة المجمع (/zhsc …)
       const first = window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase() || ''
-      const portalPrefix = first && ['zhsc', 'hads'].includes(first) ? `/${first}` : ''
+      const portalPrefix = /^[a-z0-9]{2,32}$/.test(first) ? `/${first}` : ''
       const target = `${portalPrefix}${kind === 'resident' ? '/resident-login' : '/login'}`
       if (window.location.pathname !== target) {
         window.location.href = target
