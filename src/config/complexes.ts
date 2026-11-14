@@ -144,6 +144,23 @@ export function applyComplexBrand(config: ComplexBrandConfig | null) {
   if (rgb) {
     root.style.setProperty('--brand-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.18)`)
   }
+
+  // PrimeVue primary palette — حتى عناصر Aura تتبع لون المجمع
+  const scale = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const
+  const mixes = [0.92, 0.8, 0.65, 0.45, 0.28, 0.12, 0, 0.18, 0.32, 0.48, 0.62]
+  scale.forEach((step, i) => {
+    const amount = mixes[i] ?? 0
+    const hex =
+      step <= 500
+        ? mixHex(primary, { r: 255, g: 255, b: 255 }, amount)
+        : mixHex(primary, { r: 0, g: 0, b: 0 }, amount)
+    root.style.setProperty(`--p-primary-${step}`, hex)
+  })
+  root.style.setProperty('--p-primary-color', mid)
+  root.style.setProperty('--p-primary-contrast-color', '#ffffff')
+  root.style.setProperty('--p-primary-hover-color', primary)
+  root.style.setProperty('--p-primary-active-color', dark)
+
   root.dataset.complex = config.slug
   document.title = config.name
 }

@@ -507,9 +507,14 @@ function logout() {
   flex-direction: column;
   gap: 28px;
   color: #f4fafb;
-  background: linear-gradient(165deg, #0b3d4a 0%, #0a3440 48%, #062830 100%);
+  background: linear-gradient(
+    165deg,
+    var(--brand-mid) 0%,
+    var(--brand) 48%,
+    var(--brand-dark) 100%
+  );
   overflow: hidden;
-  box-shadow: -8px 0 32px rgba(6, 40, 48, 0.12);
+  box-shadow: -8px 0 32px color-mix(in srgb, var(--brand-dark) 35%, transparent);
 }
 
 .sidebar-glow {
