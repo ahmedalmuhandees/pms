@@ -28,6 +28,7 @@ export type PageKey =
   | 'installments'
   | 'reservations'
   | 'receipts'
+  | 'sales-commissions'
   | 'service-settings'
   | 'monthly-services'
   | 'monthly-invoices'
@@ -123,6 +124,7 @@ export const PAGE_PERMISSION_GROUPS: PagePermissionGroup[] = [
       { key: 'installments', label: 'الأقساط', path: '/installments' },
       { key: 'reservations', label: 'الحجوزات', path: '/reservations' },
       { key: 'receipts', label: 'الوصولات', path: '/receipts' },
+      { key: 'sales-commissions', label: 'نسبة المبيعات', path: '/sales-commissions' },
     ],
   },
   {

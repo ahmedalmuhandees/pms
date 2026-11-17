@@ -1,1 +1,0 @@
-import{c as e,u as t}from"./index-iYe9vu4G.js";async function n(n){return t(await e.get(`/api/PricePlans`,{params:n}))}async function r(n){return t(await e.post(`/api/PricePlans`,n))}async function i(n,r){return t(await e.put(`/api/PricePlans/${n}`,r))}async function a(n){return t(await e.delete(`/api/PricePlans/${n}`))}export{i,a as n,n as r,r as t};

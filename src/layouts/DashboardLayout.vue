@@ -255,6 +255,7 @@ const allMenuGroups: MenuGroup[] = [
       { path: '/installments', label: 'الأقساط', icon: 'pi pi-list', pageKey: 'installments' },
       { path: '/reservations', label: 'الحجوزات', icon: 'pi pi-bookmark', pageKey: 'reservations' },
       { path: '/receipts', label: 'الوصولات', icon: 'pi pi-money-bill', pageKey: 'receipts' },
+      { path: '/sales-commissions', label: 'نسبة المبيعات', icon: 'pi pi-percentage', pageKey: 'sales-commissions' },
     ],
   },
   {
