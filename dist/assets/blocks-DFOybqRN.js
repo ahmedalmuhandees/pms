@@ -1,1 +1,0 @@
-import{c as e,u as t}from"./index-dn0VlgWI.js";async function n(n){return t(await e.get(`/api/Blocks`,{params:n}))}async function r(n){return t(await e.post(`/api/Blocks`,n))}async function i(n,r){return t(await e.put(`/api/Blocks/${n}`,r))}async function a(n){return t(await e.delete(`/api/Blocks/${n}`))}export{i,a as n,n as r,r as t};

@@ -19,7 +19,7 @@ import type {
   PricePlanInstallmentItem,
   Unit,
 } from '@/types'
-import { PricePlanPricingType, UnitUi } from '@/types'
+import { PricePlanPricingType, PricePlanScheduleKind, UnitUi } from '@/types'
 import {
   createPricePlan,
   deletePricePlan,
@@ -138,16 +138,20 @@ const installmentCount = computed(() => {
   return months / form.paymentIntervalMonths
 })
 
+const installmentOnlyRows = computed(() =>
+  installmentRows.value.filter((r) => (r.kind ?? PricePlanScheduleKind.Installment) === PricePlanScheduleKind.Installment),
+)
+
 const scheduleSumAmount = computed(() =>
-  Math.round(installmentRows.value.reduce((s, r) => s + (r.amount || 0), 0)),
+  Math.round(installmentOnlyRows.value.reduce((s, r) => s + (r.amount || 0), 0)),
 )
 
 const scheduleSumPercent = computed(
-  () => Math.round(installmentRows.value.reduce((s, r) => s + (r.percent || 0), 0) * 100) / 100,
+  () => Math.round(installmentOnlyRows.value.reduce((s, r) => s + (r.percent || 0), 0) * 100) / 100,
 )
 
 const scheduleMatchesRemaining = computed(() => {
-  if (!installmentCount.value || installmentRows.value.length !== installmentCount.value) return false
+  if (!installmentCount.value || installmentOnlyRows.value.length !== installmentCount.value) return false
   if (isPercentage.value) {
     return Math.abs(scheduleSumPercent.value - remainingPercent.value) <= 0.01
   }
@@ -160,6 +164,63 @@ function addMonths(date: Date, months: number) {
   return d
 }
 
+function monthsBetween(start: Date, end: Date) {
+  return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
+}
+
+function installmentArabicName(n: number) {
+  const names = [
+    'الدفعة الأولى',
+    'الدفعة الثانية',
+    'الدفعة الثالثة',
+    'الدفعة الرابعة',
+    'الدفعة الخامسة',
+    'الدفعة السادسة',
+    'الدفعة السابعة',
+    'الدفعة الثامنة',
+    'الدفعة التاسعة',
+    'الدفعة العاشرة',
+    'الدفعة الحادية عشرة',
+    'الدفعة الثانية عشرة',
+  ]
+  return names[n - 1] || `الدفعة ${n}`
+}
+
+function kindLabel(kind?: number | null) {
+  if (kind === PricePlanScheduleKind.Delivery) return 'استلام'
+  if (kind === PricePlanScheduleKind.DownPayment) return 'مقدمة'
+  return 'دفعة'
+}
+
+function reindexSchedule() {
+  installmentRows.value.forEach((r, i) => {
+    r.index = i + 1
+  })
+}
+
+function syncSpecialAmounts() {
+  for (const row of installmentRows.value) {
+    if (row.kind === PricePlanScheduleKind.Delivery) {
+      row.amount = deliveryAmountValue.value
+      row.percent = isPercentage.value
+        ? Math.round((form.deliveryAmount || 0) * 100) / 100
+        : form.sellingPrice
+          ? Math.round((deliveryAmountValue.value / form.sellingPrice) * 10000) / 100
+          : 0
+      row.name = 'الاستلام'
+    } else if (row.kind === PricePlanScheduleKind.DownPayment) {
+      row.amount = downPaymentAmount.value
+      row.percent = isPercentage.value
+        ? Math.round((form.downPayment || 0) * 100) / 100
+        : form.sellingPrice
+          ? Math.round((downPaymentAmount.value / form.sellingPrice) * 10000) / 100
+          : 0
+      row.name = 'دفعة المقدمة'
+    }
+  }
+}
+
+/** يبني جدولاً موحداً: استلام → دفعات → مقدمة (قابل لإعادة الترتيب) */
 function rebuildInstallmentSchedule() {
   const count = installmentCount.value
   if (!count || remainingAmount.value < 0 || (isPercentage.value && remainingPercent.value < 0)) {
@@ -169,45 +230,119 @@ function rebuildInstallmentSchedule() {
 
   const start = firstInstallmentDateModel.value || new Date()
   const interval = form.paymentIntervalMonths || 1
+  const rows: PricePlanInstallmentItem[] = []
+
+  if (deliveryAmountValue.value > 0 || (isPercentage.value && (form.deliveryAmount || 0) > 0)) {
+    rows.push({
+      index: 1,
+      kind: PricePlanScheduleKind.Delivery,
+      name: 'الاستلام',
+      monthOffset: 0,
+      dueDate: addMonths(start, 0).toISOString(),
+      amount: deliveryAmountValue.value,
+      percent: isPercentage.value
+        ? Math.round((form.deliveryAmount || 0) * 100) / 100
+        : form.sellingPrice
+          ? Math.round((deliveryAmountValue.value / form.sellingPrice) * 10000) / 100
+          : 0,
+    })
+  }
 
   if (isPercentage.value) {
     const base = Math.floor((remainingPercent.value / count) * 100) / 100
     let allocated = 0
-    installmentRows.value = Array.from({ length: count }, (_, i) => {
+    for (let i = 0; i < count; i++) {
       const percent =
         i === count - 1
           ? Math.round((remainingPercent.value - allocated) * 100) / 100
           : base
       allocated = Math.round((allocated + percent) * 100) / 100
       const amount = Math.round(((form.sellingPrice || 0) * percent) / 100)
-      return {
-        index: i + 1,
-        dueDate: addMonths(start, interval * i).toISOString(),
+      const monthOffset = interval * i
+      rows.push({
+        index: rows.length + 1,
+        kind: PricePlanScheduleKind.Installment,
+        name: installmentArabicName(i + 1),
+        monthOffset,
+        dueDate: addMonths(start, monthOffset).toISOString(),
         amount,
         percent,
-      }
-    })
-    return
+      })
+    }
+  } else {
+    const base = Math.round(remainingAmount.value / count)
+    let allocated = 0
+    for (let i = 0; i < count; i++) {
+      const amount = i === count - 1 ? remainingAmount.value - allocated : base
+      allocated += amount
+      const percent = form.sellingPrice
+        ? Math.round((amount / form.sellingPrice) * 10000) / 100
+        : 0
+      const monthOffset = interval * i
+      rows.push({
+        index: rows.length + 1,
+        kind: PricePlanScheduleKind.Installment,
+        name: installmentArabicName(i + 1),
+        monthOffset,
+        dueDate: addMonths(start, monthOffset).toISOString(),
+        amount,
+        percent,
+      })
+    }
   }
 
-  const base = Math.round(remainingAmount.value / count)
-  let allocated = 0
-  installmentRows.value = Array.from({ length: count }, (_, i) => {
-    const amount = i === count - 1 ? remainingAmount.value - allocated : base
-    allocated += amount
-    const percent = form.sellingPrice
-      ? Math.round((amount / form.sellingPrice) * 10000) / 100
+  if (downPaymentAmount.value > 0 || (isPercentage.value && (form.downPayment || 0) > 0)) {
+    const lastOffset = rows.length
+      ? Math.max(...rows.map((r) => r.monthOffset || 0)) + interval
       : 0
-    return {
-      index: i + 1,
-      dueDate: addMonths(start, interval * i).toISOString(),
-      amount,
-      percent,
-    }
-  })
+    rows.push({
+      index: rows.length + 1,
+      kind: PricePlanScheduleKind.DownPayment,
+      name: 'دفعة المقدمة',
+      monthOffset: lastOffset,
+      dueDate: addMonths(start, lastOffset).toISOString(),
+      amount: downPaymentAmount.value,
+      percent: isPercentage.value
+        ? Math.round((form.downPayment || 0) * 100) / 100
+        : form.sellingPrice
+          ? Math.round((downPaymentAmount.value / form.sellingPrice) * 10000) / 100
+          : 0,
+    })
+  }
+
+  installmentRows.value = rows
+  reindexSchedule()
+}
+
+function moveScheduleRow(index: number, direction: -1 | 1) {
+  const target = index + direction
+  if (target < 0 || target >= installmentRows.value.length) return
+  const copy = [...installmentRows.value]
+  const [item] = copy.splice(index, 1)
+  copy.splice(target, 0, item)
+  installmentRows.value = copy
+  reindexSchedule()
+}
+
+function onMonthOffsetEdit(row: PricePlanInstallmentItem) {
+  const start = firstInstallmentDateModel.value || new Date()
+  const offset = Math.max(0, Math.round(row.monthOffset || 0))
+  row.monthOffset = offset
+  row.dueDate = addMonths(start, offset).toISOString()
+}
+
+function onDueDateEdit(row: PricePlanInstallmentItem, value: Date | null) {
+  if (!value) return
+  const start = firstInstallmentDateModel.value || new Date()
+  row.dueDate = value.toISOString()
+  row.monthOffset = Math.max(0, monthsBetween(start, value))
 }
 
 function onInstallmentAmountEdit(row: PricePlanInstallmentItem) {
+  if (row.kind === PricePlanScheduleKind.Delivery || row.kind === PricePlanScheduleKind.DownPayment) {
+    syncSpecialAmounts()
+    return
+  }
   row.amount = Math.round(row.amount || 0)
   row.percent = form.sellingPrice
     ? Math.round((row.amount / form.sellingPrice) * 10000) / 100
@@ -215,6 +350,10 @@ function onInstallmentAmountEdit(row: PricePlanInstallmentItem) {
 }
 
 function onInstallmentPercentEdit(row: PricePlanInstallmentItem) {
+  if (row.kind === PricePlanScheduleKind.Delivery || row.kind === PricePlanScheduleKind.DownPayment) {
+    syncSpecialAmounts()
+    return
+  }
   row.percent = Math.round((row.percent || 0) * 100) / 100
   row.amount = Math.round(((form.sellingPrice || 0) * row.percent) / 100)
 }
@@ -403,7 +542,38 @@ function openEdit(row: PricePlan) {
     installments: row.installments ?? [],
   })
   if (row.installments?.length) {
-    installmentRows.value = row.installments.map((i) => ({ ...i }))
+    const hasUnified = row.installments.some(
+      (i) =>
+        i.kind === PricePlanScheduleKind.Delivery ||
+        i.kind === PricePlanScheduleKind.DownPayment,
+    )
+    if (hasUnified) {
+      installmentRows.value = row.installments.map((i, idx) => ({
+        ...i,
+        index: idx + 1,
+        kind: i.kind ?? PricePlanScheduleKind.Installment,
+        monthOffset: i.monthOffset ?? 0,
+        name: i.name || null,
+      }))
+      syncSpecialAmounts()
+    } else {
+      // جدول قديم: دفعات فقط — أعد البناء مع الاستلام/المقدمة واحفظ مبالغ الدفعات
+      const legacy = row.installments.map((i) => ({ ...i }))
+      rebuildInstallmentSchedule()
+      const inst = installmentRows.value.filter(
+        (r) => r.kind === PricePlanScheduleKind.Installment,
+      )
+      legacy.forEach((src, i) => {
+        if (!inst[i]) return
+        inst[i].amount = Math.round(src.amount || 0)
+        inst[i].percent = Math.round((src.percent || 0) * 100) / 100
+        if (src.dueDate) {
+          inst[i].dueDate = src.dueDate
+          const start = firstInstallmentDateModel.value || new Date()
+          inst[i].monthOffset = Math.max(0, monthsBetween(start, new Date(src.dueDate)))
+        }
+      })
+    }
   } else {
     rebuildInstallmentSchedule()
   }
@@ -432,6 +602,9 @@ function buildPayload(): CreatePricePlanDto {
     firstInstallmentDate: firstInstallmentDateModel.value?.toISOString() ?? null,
     installments: installmentRows.value.map((r, i) => ({
       index: i + 1,
+      kind: r.kind ?? PricePlanScheduleKind.Installment,
+      name: r.name || null,
+      monthOffset: r.monthOffset ?? 0,
       dueDate: r.dueDate,
       amount: Math.round(r.amount || 0),
       percent: Math.round((r.percent || 0) * 100) / 100,
@@ -492,15 +665,15 @@ function validate() {
     notify.warning('تعذر بناء جدول الأقساط — راجع السنوات وفترة الأشهر')
     return false
   }
-  if (installmentRows.value.length !== installmentCount.value) {
-    notify.warning('جدول الأقساط غير مكتمل — اضغط إعادة التوزيع')
+  if (installmentOnlyRows.value.length !== installmentCount.value) {
+    notify.warning('جدول الدفعات غير مكتمل — اضغط إعادة بناء الجدول')
     return false
   }
   if (!scheduleMatchesRemaining.value) {
     notify.warning(
       isPercentage.value
-        ? `مجموع نسب الأقساط (${scheduleSumPercent.value}٪) يجب أن يساوي الباقي (${remainingPercent.value}٪)`
-        : `مجموع مبالغ الأقساط (${formatMoney(scheduleSumAmount.value)}) يجب أن يساوي الباقي (${formatMoney(remainingAmount.value)})`,
+        ? `مجموع نسب الدفعات (${scheduleSumPercent.value}٪) يجب أن يساوي الباقي (${remainingPercent.value}٪)`
+        : `مجموع مبالغ الدفعات (${formatMoney(scheduleSumAmount.value)}) يجب أن يساوي الباقي (${formatMoney(remainingAmount.value)})`,
     )
     return false
   }
@@ -832,17 +1005,13 @@ onMounted(async () => {
         <div v-if="installmentCount" class="field full schedule-block">
           <div class="schedule-head">
             <div>
-              <strong>جدول تسعير الأقساط ({{ installmentCount }})</strong>
+              <strong>جدول الدفعات المرتّب ({{ installmentRows.length }} صف)</strong>
               <small>
-                {{
-                  isPercentage
-                    ? 'عدّل النسبة لكل قسط — المجموع = الباقي ٪'
-                    : 'عدّل المبلغ لكل قسط — المجموع = الباقي'
-                }}
+                رتّب الصفوف (استلام / دفعات / مقدمة) وعدّل الأشهر والتواريخ — عند إنشاء عقد تُستدعى بنفس الترتيب
               </small>
             </div>
             <Button
-              label="إعادة التوزيع بالتساوي"
+              label="إعادة بناء الجدول"
               size="small"
               severity="secondary"
               outlined
@@ -851,13 +1020,63 @@ onMounted(async () => {
           </div>
 
           <DataTable :value="installmentRows" size="small" striped-rows class="schedule-table">
-            <Column header="#" style="width: 56px" sortable>
+            <Column header="ترتيب" style="width: 92px">
+              <template #body="{ index }">
+                <div class="order-btns">
+                  <Button
+                    icon="pi pi-arrow-up"
+                    size="small"
+                    text
+                    rounded
+                    :disabled="index === 0"
+                    @click="moveScheduleRow(index, -1)"
+                  />
+                  <Button
+                    icon="pi pi-arrow-down"
+                    size="small"
+                    text
+                    rounded
+                    :disabled="index === installmentRows.length - 1"
+                    @click="moveScheduleRow(index, 1)"
+                  />
+                </div>
+              </template>
+            </Column>
+            <Column header="#" style="width: 48px">
               <template #body="{ data }">{{ data.index }}</template>
             </Column>
-            <Column header="الشهر / الاستحقاق" sortable>
-              <template #body="{ data }">{{ formatDate(data.dueDate) }}</template>
+            <Column header="النوع" style="width: 88px">
+              <template #body="{ data }">
+                <span class="kind-pill" :data-kind="data.kind">{{ kindLabel(data.kind) }}</span>
+              </template>
             </Column>
-            <Column v-if="isPercentage" header="النسبة ٪" sortable>
+            <Column header="الاسم">
+              <template #body="{ data }">
+                <InputText v-model="data.name" class="w-full" />
+              </template>
+            </Column>
+            <Column header="الشهر" style="width: 110px">
+              <template #body="{ data }">
+                <InputNumber
+                  v-model="data.monthOffset"
+                  :min="0"
+                  :max="480"
+                  show-buttons
+                  @update:model-value="onMonthOffsetEdit(data)"
+                />
+              </template>
+            </Column>
+            <Column header="تاريخ الاستحقاق" style="width: 160px">
+              <template #body="{ data }">
+                <DatePicker
+                  :model-value="data.dueDate ? new Date(data.dueDate) : null"
+                  date-format="yy-mm-dd"
+                  show-icon
+                  @update:model-value="(v) => onDueDateEdit(data, Array.isArray(v) ? (v[0] ?? null) : (v ?? null))"
+                />
+              </template>
+            </Column>
+            <Column v-if="isPercentage" header="النسبة ٪" style="width: 120px">
               <template #body="{ data }">
                 <InputNumber
                   v-model="data.percent"
@@ -865,14 +1084,22 @@ onMounted(async () => {
                   :max="100"
                   :min-fraction-digits="0"
                   :max-fraction-digits="2"
+                  :disabled="
+                    data.kind === PricePlanScheduleKind.Delivery ||
+                    data.kind === PricePlanScheduleKind.DownPayment
+                  "
                   @update:model-value="onInstallmentPercentEdit(data)"
                 />
               </template>
             </Column>
-            <Column header="السعر" sortable>
+            <Column header="المبلغ" style="width: 140px">
               <template #body="{ data }">
                 <InputNumber
-                  v-if="!isPercentage"
+                  v-if="
+                    !isPercentage &&
+                    data.kind !== PricePlanScheduleKind.Delivery &&
+                    data.kind !== PricePlanScheduleKind.DownPayment
+                  "
                   v-model="data.amount"
                   :min="0"
                   @update:model-value="onInstallmentAmountEdit(data)"
@@ -884,11 +1111,11 @@ onMounted(async () => {
 
           <div class="schedule-footer" :class="{ ok: scheduleMatchesRemaining, bad: !scheduleMatchesRemaining }">
             <span v-if="isPercentage">
-              مجموع النسب: <strong>{{ scheduleSumPercent }}٪</strong>
+              مجموع نسب الدفعات: <strong>{{ scheduleSumPercent }}٪</strong>
               / الباقي: <strong>{{ remainingPercent }}٪</strong>
             </span>
             <span v-else>
-              مجموع الأسعار: <strong>{{ formatMoney(scheduleSumAmount) }}</strong>
+              مجموع مبالغ الدفعات: <strong>{{ formatMoney(scheduleSumAmount) }}</strong>
               / الباقي: <strong>{{ formatMoney(remainingAmount) }}</strong>
             </span>
             <strong>{{ scheduleMatchesRemaining ? 'مطابق ✓' : 'غير مطابق' }}</strong>
@@ -964,6 +1191,31 @@ onMounted(async () => {
   background: #fff6e5;
   border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
   color: #8a5a00;
+}
+
+.order-btns {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.kind-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.kind-pill[data-kind='1'] {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.kind-pill[data-kind='2'] {
+  background: #fff3e0;
+  color: #e65100;
 }
 
 .schedule-block {

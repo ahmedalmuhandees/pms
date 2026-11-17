@@ -907,6 +907,42 @@ function applyPricePlan(planId: string | null | undefined) {
     firstInstallmentDateModel.value = new Date(plan.firstInstallmentDate)
     if (!deliveryDateModel.value) deliveryDateModel.value = new Date(plan.firstInstallmentDate)
   }
+
+  // تطبيق ترتيب جدول الخطة (استلام / دفعات / مقدمة)
+  const schedule = [...(plan.installments ?? [])].sort((a, b) => (a.index || 0) - (b.index || 0))
+  if (schedule.length) {
+    const delivery = schedule.find((r) => r.kind === 1)
+    if (delivery?.dueDate) deliveryDateModel.value = new Date(delivery.dueDate)
+
+    const installments = schedule.filter((r) => !r.kind || r.kind === 0)
+    if (installments.length) {
+      installmentRows.value = installments.map((r, i) => ({
+        index: i + 1,
+        kind: 0,
+        name: r.name || null,
+        monthOffset: r.monthOffset ?? 0,
+        dueDate: r.dueDate || null,
+        amount: Math.round(r.amount || 0),
+        percent: r.percent || 0,
+      }))
+      if (installments[0]?.dueDate) {
+        firstInstallmentDateModel.value = new Date(installments[0].dueDate)
+      }
+    }
+
+    const down = schedule.find((r) => r.kind === 2)
+    if (down && form.downPayment > 0) {
+      downPaymentScheduleEnabled.value = true
+      downPaymentRows.value = [
+        {
+          name: down.name || 'دفعة المقدمة',
+          dueDate: down.dueDate || new Date().toISOString(),
+          amount: Math.round(form.downPayment || 0),
+        },
+      ]
+    }
+  }
+
   syncUnitWithPricePlan()
 }
 

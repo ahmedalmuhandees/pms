@@ -886,8 +886,22 @@ export interface CreateSalesContractDto {
 
 export type UpdateSalesContractDto = CreateSalesContractDto
 
+/** نوع صف جدول خطة الأسعار الموحد */
+export const PricePlanScheduleKind = {
+  Installment: 0,
+  Delivery: 1,
+  DownPayment: 2,
+} as const
+export type PricePlanScheduleKind =
+  (typeof PricePlanScheduleKind)[keyof typeof PricePlanScheduleKind]
+
 export interface PricePlanInstallmentItem {
   index: number
+  /** 0=دفعة، 1=استلام، 2=مقدمة */
+  kind?: PricePlanScheduleKind | number | null
+  name?: string | null
+  /** عدد الأشهر من تاريخ بداية الجدول */
+  monthOffset?: number | null
   dueDate?: string | null
   amount: number
   percent: number
