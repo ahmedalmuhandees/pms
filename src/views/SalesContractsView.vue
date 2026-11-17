@@ -2616,7 +2616,36 @@ onMounted(async () => {
           </div>
         </template>
 
-        <template v-if="usesInstallments">
+        <template v-if="usesInstallments && isCustomSchedulePricing && isBank">
+          <div class="field full section-title">بيانات المصرف العقاري</div>
+          <div class="field">
+            <label>اسم المصرف العقاري</label>
+            <Select
+              v-if="bankNameOptions.length"
+              v-model="form.bankName"
+              :options="bankNameOptions"
+              option-label="label"
+              option-value="value"
+              editable
+              placeholder="اختر من تصميم العقد"
+              checkmark
+              append-to="body"
+              @update:model-value="onBankNamePicked"
+            />
+            <RememberedInput
+              v-else
+              v-model="form.bankName"
+              memory-key="contract.bankName"
+              placeholder="أدخل اسم المصرف"
+            />
+          </div>
+          <div class="field">
+            <label>مبلغ المصرف العقاري</label>
+            <InputNumber v-model="form.financedAmount" :min="0" />
+          </div>
+        </template>
+
+        <template v-else-if="usesInstallments && !isCustomSchedulePricing">
           <div class="field full section-title">
             {{ isBank ? 'بيانات المصرف العقاري' : 'بيانات كاش الأقساط' }}
           </div>
@@ -2670,138 +2699,7 @@ onMounted(async () => {
               <DatePicker v-model="firstInstallmentDateModel" date-format="yy-mm-dd" show-icon />
             </div>
 
-            <template v-if="isCustomSchedulePricing">
-              <div v-if="computedInstallmentCount" class="field full schedule-block">
-                <div class="schedule-head">
-                  <div>
-                    <strong>جدول الدفعات المرتّب ({{ installmentRows.length }} صف)</strong>
-                    <small>
-                      رتّب الصفوف (استلام / دفعات / مقدمة) وعدّل الأشهر والتواريخ كما في خطة الأسعار
-                    </small>
-                  </div>
-                  <Button
-                    label="إعادة بناء الجدول"
-                    size="small"
-                    severity="secondary"
-                    outlined
-                    @click="rebuildInstallmentSchedule"
-                  />
-                </div>
-
-                <DataTable :value="installmentRows" size="small" striped-rows class="schedule-table">
-                  <Column header="ترتيب" style="width: 92px">
-                    <template #body="{ index }">
-                      <div class="order-btns">
-                        <Button
-                          icon="pi pi-arrow-up"
-                          size="small"
-                          text
-                          rounded
-                          :disabled="index === 0"
-                          @click="moveScheduleRow(index, -1)"
-                        />
-                        <Button
-                          icon="pi pi-arrow-down"
-                          size="small"
-                          text
-                          rounded
-                          :disabled="index === installmentRows.length - 1"
-                          @click="moveScheduleRow(index, 1)"
-                        />
-                      </div>
-                    </template>
-                  </Column>
-                  <Column header="#" style="width: 48px">
-                    <template #body="{ data }">{{ data.index }}</template>
-                  </Column>
-                  <Column header="النوع" style="width: 88px">
-                    <template #body="{ data }">
-                      <span class="kind-pill" :data-kind="data.kind">{{ kindLabel(data.kind) }}</span>
-                    </template>
-                  </Column>
-                  <Column header="الاسم">
-                    <template #body="{ data }">
-                      <InputText v-model="data.name" class="w-full" />
-                    </template>
-                  </Column>
-                  <Column header="الشهر" style="width: 110px">
-                    <template #body="{ data }">
-                      <InputNumber
-                        v-model="data.monthOffset"
-                        :min="0"
-                        :max="480"
-                        show-buttons
-                        @update:model-value="onMonthOffsetEdit(data)"
-                      />
-                    </template>
-                  </Column>
-                  <Column header="تاريخ الاستحقاق" style="width: 160px">
-                    <template #body="{ data }">
-                      <DatePicker
-                        :model-value="data.dueDate ? new Date(data.dueDate) : null"
-                        date-format="yy-mm-dd"
-                        show-icon
-                        @update:model-value="(v) => onDueDateEdit(data, Array.isArray(v) ? (v[0] ?? null) : (v ?? null))"
-                      />
-                    </template>
-                  </Column>
-                  <Column v-if="isPercentage" header="النسبة ٪" style="width: 120px">
-                    <template #body="{ data }">
-                      <InputNumber
-                        v-model="data.percent"
-                        :min="0"
-                        :max="100"
-                        :min-fraction-digits="0"
-                        :max-fraction-digits="2"
-                        :disabled="
-                          data.kind === PricePlanScheduleKind.Delivery ||
-                          data.kind === PricePlanScheduleKind.DownPayment
-                        "
-                        @update:model-value="onInstallmentPercentEdit(data)"
-                      />
-                    </template>
-                  </Column>
-                  <Column header="المبلغ" style="width: 140px">
-                    <template #body="{ data }">
-                      <InputNumber
-                        v-if="
-                          !isPercentage &&
-                          data.kind !== PricePlanScheduleKind.Delivery &&
-                          data.kind !== PricePlanScheduleKind.DownPayment
-                        "
-                        v-model="data.amount"
-                        :min="0"
-                        @update:model-value="onInstallmentAmountEdit(data)"
-                      />
-                      <span v-else>{{ formatMoney(data.amount) }}</span>
-                    </template>
-                  </Column>
-                </DataTable>
-
-                <div
-                  class="schedule-footer"
-                  :class="{ ok: scheduleMatchesRemaining, bad: !scheduleMatchesRemaining }"
-                >
-                  <span v-if="isPercentage">
-                    مجموع نسب الدفعات: <strong>{{ scheduleSumPercent }}٪</strong>
-                    / الباقي: <strong>{{ remainingPercent }}٪</strong>
-                  </span>
-                  <span v-else>
-                    مجموع مبالغ الدفعات: <strong>{{ formatMoney(scheduleSumAmount) }}</strong>
-                    / الباقي: <strong>{{ formatMoney(computedRemaining) }}</strong>
-                  </span>
-                  <strong>{{ scheduleMatchesRemaining ? 'مطابق ✓' : 'غير مطابق' }}</strong>
-                </div>
-              </div>
-              <div
-                v-else-if="form.years && form.paymentIntervalMonths"
-                class="field full formula-box is-warn"
-              >
-                الأشهر الكلية لا تقبل القسمة على فترة الدفع — عدّل السنوات أو عدد الأشهر لإظهار الجدول.
-              </div>
-            </template>
-
-            <template v-else-if="isManualPricing">
+            <template v-if="isManualPricing">
               <div v-if="computedInstallmentCount" class="field full schedule-block">
                 <div class="schedule-head">
                   <div>
