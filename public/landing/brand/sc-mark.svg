@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 15 630 870">
+
+      <g class="mark-tops" style="fill: var(--mark-top, #3D7EF5)">
+        <path class="mark-face f1" d="M42 291 506 25v162L182 372z"/>
+        <path class="mark-face f2" d="M182 422l24-13 140 81-164 94z"/>
+        <path class="mark-face f3" d="M326 424l140-81 182 104-142 81z"/>
+      </g>
+      <g class="mark-sides" style="fill: var(--mark-side, #2563EB)">
+        <path class="mark-face f4" d="M42 291l140 81v212L42 504z"/>
+        <path class="mark-face f5" d="M506 528l142-81v161L183 874V712z"/>
+      </g>
+    
+</svg>

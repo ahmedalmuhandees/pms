@@ -1,0 +1,1 @@
+import{s as e,t}from"./client-DhidhXbC.js";async function n(n){return e(await t.get(`/api/Floors`,{params:n}))}async function r(n){return e(await t.post(`/api/Floors`,n))}async function i(n,r){return e(await t.put(`/api/Floors/${n}`,r))}async function a(n){return e(await t.delete(`/api/Floors/${n}`))}export{i,a as n,n as r,r as t};

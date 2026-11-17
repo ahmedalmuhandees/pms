@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { complexLocation } from '@/router'
 
 const router = useRouter()
 const scrolled = ref(false)
 const revealEls = ref<HTMLElement[]>([])
+
+const year = new Date().getFullYear()
+const companyUrl = 'https://solidcode-iq.com'
+const companyName = 'Solid Code IQ'
+const companyTagAr = 'حلول ذكية. أثر حقيقي.'
+const companyTagEn = 'Smart Solutions. Real Impact.'
+const companyEmail = 'hello@solidcodeiq.com'
+const companyPhone = '+964 780 000 0000'
+const companyCity = 'بغداد، العراق'
 
 const pillars = [
   {
@@ -55,10 +65,19 @@ function onScroll() {
 }
 
 function goLogin() {
+  // من الدومين الرئيسي (بدون مجمع في المسار) → بوابة مجمع افتراضية
+  if (!complexLocation.slug) {
+    window.location.assign('/zhsc/login')
+    return
+  }
   void router.push('/login')
 }
 
 function goResident() {
+  if (!complexLocation.slug) {
+    window.location.assign('/zhsc/resident-login')
+    return
+  }
   void router.push('/resident-login')
 }
 
@@ -92,10 +111,13 @@ onUnmounted(() => {
 <template>
   <div class="lp" dir="rtl">
     <header class="nav" :class="{ scrolled }">
-      <div class="nav__brand">
-        <span class="mark">مج</span>
-        <strong>إدارة المجمعات السكنية</strong>
-      </div>
+      <a class="nav__brand" :href="companyUrl" target="_blank" rel="noopener noreferrer">
+        <img class="mark" src="/landing/brand/favicon.svg" width="42" height="42" alt="" />
+        <span class="nav__brand-text">
+          <strong>{{ companyName }}</strong>
+          <small>{{ companyTagAr }}</small>
+        </span>
+      </a>
       <nav class="nav__links" aria-label="أقسام الصفحة">
         <button type="button" @click="scrollTo('modules')">المميزات</button>
         <button type="button" @click="scrollTo('pillars')">الأقسام</button>
@@ -113,10 +135,14 @@ onUnmounted(() => {
         <div class="hero__shade" />
       </div>
       <div class="hero__content">
+        <p class="eyebrow">
+          <img src="/landing/brand/logo-mark.svg" alt="" width="18" height="22" />
+          <span>{{ companyTagEn }}</span>
+        </p>
         <p class="brand">إدارة المجمعات السكنية</p>
         <h1>نظام واحد يدير المجمع من البيع حتى التشغيل</h1>
         <p class="lead">
-          وحدات، عقود، أقساط، سكان، مرافق، وتقارير — منصة عربية لإدارة المجمعات السكنية بكفاءة.
+          وحدات، عقود، أقساط، سكان، مرافق، وتقارير — منصة من {{ companyName }} لإدارة المجمعات السكنية بكفاءة.
         </p>
         <div class="cta">
           <button type="button" class="btn solid lg" @click="goLogin">ابدأ من لوحة التحكم</button>
@@ -207,7 +233,7 @@ onUnmounted(() => {
       <div class="finale__copy reveal">
         <p class="brand">إدارة المجمعات السكنية</p>
         <h2>جاهز لإدارة مجمعك بوضوح أكبر</h2>
-        <p>ادخل كلوحة إدارة أو كساكن — نفس المنظومة، أدوار مختلفة.</p>
+        <p>ادخل كلوحة إدارة أو كساكن — نفس المنظومة، أدوار مختلفة. منتج من {{ companyName }}.</p>
         <div class="cta">
           <button type="button" class="btn solid lg" @click="goLogin">دخول الإدارة</button>
           <button type="button" class="btn ghost lg" @click="goResident">دخول الساكن</button>
@@ -216,24 +242,55 @@ onUnmounted(() => {
     </section>
 
     <footer class="foot">
-      <div class="nav__brand">
-        <span class="mark sm">مج</span>
-        <strong>إدارة المجمعات السكنية</strong>
+      <div class="foot__brand">
+        <a class="nav__brand" :href="companyUrl" target="_blank" rel="noopener noreferrer">
+          <img class="mark sm" src="/landing/brand/favicon.svg" width="34" height="34" alt="" />
+          <span class="nav__brand-text">
+            <strong>{{ companyName }}</strong>
+            <small>{{ companyTagAr }}</small>
+          </span>
+        </a>
+        <p class="foot__about">
+          شركة متخصصة في تطوير البرمجيات والحلول التقنية والتحول الرقمي —
+          نبني أنظمة وتطبيقات قابلة للتوسع لقطاعات متعددة.
+        </p>
       </div>
-      <span>منصة إدارة مجمعات سكنية — هيكل، مبيعات، تشغيل، مرافق</span>
+
+      <div class="foot__cols">
+        <div class="foot__col">
+          <h4>المنتج</h4>
+          <p>إدارة المجمعات السكنية — هيكل، مبيعات، تشغيل، مرافق</p>
+        </div>
+        <div class="foot__col">
+          <h4>الشركة</h4>
+          <a :href="companyUrl" target="_blank" rel="noopener noreferrer">{{ companyUrl.replace('https://', '') }}</a>
+          <a :href="`mailto:${companyEmail}`">{{ companyEmail }}</a>
+          <a :href="`tel:${companyPhone.replace(/\s/g, '')}`" dir="ltr">{{ companyPhone }}</a>
+          <span>{{ companyCity }}</span>
+        </div>
+      </div>
+
+      <div class="foot__bottom">
+        <span dir="ltr">© {{ year }} {{ companyName }}. جميع الحقوق محفوظة.</span>
+        <a class="foot__site" :href="companyUrl" target="_blank" rel="noopener noreferrer">
+          زيارة موقع الشركة
+        </a>
+      </div>
     </footer>
   </div>
 </template>
 
 <style scoped>
 .lp {
-  --ink: #0a2f38;
-  --teal: #156574;
-  --teal-deep: #0b3d4a;
-  --sand: #d7e4e7;
-  --cream: #f2f6f7;
-  --muted: rgba(242, 246, 247, 0.8);
-  --line: rgba(10, 47, 56, 0.12);
+  /* Solid Code IQ brand */
+  --ink: #0b1f44;
+  --blue: #3d7ef5;
+  --blue-deep: #2563eb;
+  --accent: #e8808d;
+  --cream: #f4f7fc;
+  --surface: #ffffff;
+  --muted: rgba(244, 247, 252, 0.82);
+  --line: rgba(11, 31, 68, 0.12);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color: var(--ink);
   background: var(--cream);
@@ -242,7 +299,7 @@ onUnmounted(() => {
   overflow-x: clip;
 }
 
-.lp :is(h1, h2, h3, .brand, .nav__brand strong, .step__n) {
+.lp :is(h1, h2, h3, h4, .brand, .nav__brand strong, .step__n) {
   font-family: 'Cairo', 'IBM Plex Sans Arabic', sans-serif;
 }
 
@@ -263,34 +320,42 @@ onUnmounted(() => {
 }
 
 .nav.scrolled {
-  background: rgba(247, 244, 239, 0.92);
+  background: rgba(244, 247, 252, 0.94);
   backdrop-filter: blur(12px);
-  box-shadow: 0 10px 30px rgba(10, 47, 56, 0.08);
+  box-shadow: 0 10px 30px rgba(11, 31, 68, 0.1);
 }
 
 .nav__brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.nav__brand-text {
+  display: grid;
+  gap: 2px;
+}
+
+.nav__brand-text small {
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.75;
 }
 
 .mark {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #1f8494, var(--teal-deep));
-  color: #fff;
-  font-weight: 800;
-  font-size: 1rem;
-  letter-spacing: 0.02em;
+  display: block;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(61, 126, 245, 0.25);
 }
 
 .mark.sm {
   width: 34px;
   height: 34px;
-  font-size: 0.85rem;
 }
 
 .nav__brand strong {
@@ -299,13 +364,15 @@ onUnmounted(() => {
   color: var(--ink);
 }
 
-.nav.scrolled .nav__brand strong {
+.nav.scrolled .nav__brand strong,
+.nav.scrolled .nav__brand-text small {
   color: var(--ink);
 }
 
 .nav:not(.scrolled) .nav__brand strong,
+.nav:not(.scrolled) .nav__brand-text small,
 .nav:not(.scrolled) .nav__links button {
-  color: #f7f4ef;
+  color: #f4f7fc;
 }
 
 .nav__links {
@@ -349,7 +416,7 @@ onUnmounted(() => {
 }
 
 .btn.solid {
-  background: linear-gradient(145deg, #1f8494, var(--teal-deep));
+  background: linear-gradient(145deg, var(--blue), var(--blue-deep));
   color: #fff;
 }
 
@@ -360,8 +427,8 @@ onUnmounted(() => {
 }
 
 .nav:not(.scrolled) .btn.ghost {
-  color: #f7f4ef;
-  border-color: rgba(247, 244, 239, 0.45);
+  color: #f4f7fc;
+  border-color: rgba(244, 247, 252, 0.4);
 }
 
 .btn.lg {
@@ -375,7 +442,7 @@ onUnmounted(() => {
   display: grid;
   align-items: center;
   padding: clamp(110px, 14vh, 150px) clamp(18px, 5vw, 64px) clamp(48px, 8vh, 80px);
-  color: #f7f4ef;
+  color: #f4f7fc;
 }
 
 .hero__media {
@@ -396,8 +463,8 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(105deg, rgba(6, 28, 34, 0.88) 0%, rgba(6, 28, 34, 0.62) 42%, rgba(6, 28, 34, 0.28) 100%),
-    linear-gradient(180deg, rgba(6, 28, 34, 0.45) 0%, transparent 38%, rgba(6, 28, 34, 0.55) 100%);
+    linear-gradient(105deg, rgba(11, 31, 68, 0.92) 0%, rgba(11, 31, 68, 0.72) 42%, rgba(37, 99, 235, 0.35) 100%),
+    linear-gradient(180deg, rgba(11, 31, 68, 0.55) 0%, transparent 38%, rgba(11, 31, 68, 0.7) 100%);
 }
 
 .hero__content {
@@ -405,6 +472,25 @@ onUnmounted(() => {
   z-index: 1;
   max-width: 760px;
   animation: rise 0.9s var(--ease) both;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 126, 245, 0.45);
+  background: rgba(11, 31, 68, 0.35);
+  color: rgba(244, 247, 252, 0.88);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.eyebrow img {
+  display: block;
+  filter: drop-shadow(0 0 6px rgba(61, 126, 245, 0.55));
 }
 
 .brand {
@@ -436,8 +522,8 @@ onUnmounted(() => {
   margin: 14px 0 0;
   font-size: 1.08rem;
   line-height: 1.75;
-  color: rgba(247, 244, 239, 0.9);
-  max-width: 38ch;
+  color: rgba(244, 247, 252, 0.9);
+  max-width: 42ch;
 }
 
 .section__head p,
@@ -472,7 +558,7 @@ onUnmounted(() => {
 }
 
 .section__head p {
-  color: rgba(10, 47, 56, 0.68);
+  color: rgba(11, 31, 68, 0.68);
 }
 
 .pillar-grid {
@@ -483,7 +569,7 @@ onUnmounted(() => {
 
 .pillar {
   padding-top: 18px;
-  border-top: 2px solid var(--teal);
+  border-top: 2px solid var(--blue);
 }
 
 .pillar h3 {
@@ -494,7 +580,7 @@ onUnmounted(() => {
 
 .pillar p {
   margin: 10px 0 16px;
-  color: rgba(10, 47, 56, 0.7);
+  color: rgba(11, 31, 68, 0.7);
   line-height: 1.7;
 }
 
@@ -511,7 +597,7 @@ onUnmounted(() => {
   padding-inline-start: 14px;
   font-size: 0.92rem;
   font-weight: 600;
-  color: var(--teal-deep);
+  color: var(--blue-deep);
 }
 
 .pillar li::before {
@@ -522,7 +608,7 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--teal);
+  background: var(--blue);
 }
 
 .band,
@@ -532,7 +618,7 @@ onUnmounted(() => {
   display: grid;
   align-items: center;
   padding: clamp(48px, 8vh, 90px) clamp(18px, 5vw, 64px);
-  color: #f7f4ef;
+  color: #f4f7fc;
   overflow: hidden;
 }
 
@@ -554,7 +640,7 @@ onUnmounted(() => {
 .finale__shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(8, 32, 38, 0.82), rgba(8, 32, 38, 0.35) 70%);
+  background: linear-gradient(90deg, rgba(11, 31, 68, 0.88), rgba(37, 99, 235, 0.35) 78%);
 }
 
 .band__copy,
@@ -572,7 +658,7 @@ onUnmounted(() => {
 }
 
 .modules {
-  background: #fff;
+  background: var(--surface);
 }
 
 .module-grid {
@@ -583,7 +669,7 @@ onUnmounted(() => {
 
 .module i {
   font-size: 1.25rem;
-  color: var(--teal);
+  color: var(--blue);
 }
 
 .module h3 {
@@ -594,7 +680,7 @@ onUnmounted(() => {
 
 .module p {
   margin: 0;
-  color: rgba(10, 47, 56, 0.68);
+  color: rgba(11, 31, 68, 0.68);
   line-height: 1.65;
   font-size: 0.92rem;
 }
@@ -605,7 +691,7 @@ onUnmounted(() => {
   gap: 0;
   min-height: 62vh;
   background: var(--ink);
-  color: #f7f4ef;
+  color: #f4f7fc;
 }
 
 .split__copy {
@@ -620,7 +706,7 @@ onUnmounted(() => {
 }
 
 .split__copy p {
-  color: rgba(247, 244, 239, 0.78);
+  color: rgba(244, 247, 252, 0.78);
 }
 
 .ticks {
@@ -645,7 +731,7 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #c46b2b;
+  background: var(--blue);
 }
 
 .split__media {
@@ -662,7 +748,7 @@ onUnmounted(() => {
   display: block;
   font-size: 2rem;
   font-weight: 800;
-  color: var(--teal);
+  color: var(--blue);
   margin-bottom: 10px;
 }
 
@@ -674,7 +760,7 @@ onUnmounted(() => {
 
 .step p {
   margin: 10px 0 0;
-  color: rgba(10, 47, 56, 0.68);
+  color: rgba(11, 31, 68, 0.68);
   line-height: 1.7;
 }
 
@@ -683,18 +769,81 @@ onUnmounted(() => {
 }
 
 .foot {
+  display: grid;
+  gap: 28px;
+  padding: 36px clamp(18px, 5vw, 64px) 24px;
+  background: #07152e;
+  color: rgba(244, 247, 252, 0.78);
+  font-size: 0.9rem;
+}
+
+.foot__brand {
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.foot__about {
+  margin: 0;
+  line-height: 1.7;
+  color: rgba(244, 247, 252, 0.68);
+}
+
+.foot .nav__brand strong,
+.foot .nav__brand-text small {
+  color: #f4f7fc;
+}
+
+.foot__cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.foot__col {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.foot__col h4 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.foot__col a,
+.foot__col span,
+.foot__col p {
+  margin: 0;
+  color: rgba(244, 247, 252, 0.72);
+  text-decoration: none;
+  line-height: 1.6;
+}
+
+.foot__col a:hover {
+  color: var(--blue);
+}
+
+.foot__bottom {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
-  padding: 28px clamp(18px, 5vw, 64px);
-  background: #062830;
-  color: rgba(247, 244, 239, 0.72);
-  font-size: 0.88rem;
+  padding-top: 18px;
+  border-top: 1px solid rgba(61, 126, 245, 0.22);
+  font-size: 0.84rem;
 }
 
-.foot .nav__brand strong {
-  color: #f7f4ef;
+.foot__site {
+  color: var(--blue);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.foot__site:hover {
+  text-decoration: underline;
 }
 
 .reveal {
@@ -756,7 +905,8 @@ onUnmounted(() => {
 @media (max-width: 640px) {
   .pillar-grid,
   .module-grid,
-  .flow-row {
+  .flow-row,
+  .foot__cols {
     grid-template-columns: 1fr;
   }
 

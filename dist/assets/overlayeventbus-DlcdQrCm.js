@@ -1,1 +1,0 @@
-import{$ as e}from"./basecomponent-COb0tzgW.js";var t=e();export{t};

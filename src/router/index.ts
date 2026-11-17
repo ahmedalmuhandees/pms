@@ -4,14 +4,24 @@ import { resolveComplexFromLocation } from '@/config/complexes'
 import { isStaleChunkError, reloadOnStaleChunk } from '@/utils/staleChunkReload'
 import { pathToPageKey } from '@/utils/pagePermissions'
 
-/** /zhsc أو /hads — وإلا تُعرض صفحة 404 */
+/** /zhsc أو /hads — وإلا تُعرض صفحة الـ landing بدل 404 */
 export const complexLocation = resolveComplexFromLocation()
 
-const notFoundRoutes: RouteRecordRaw[] = [
+const landingRoutes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    name: 'landing-home',
+    component: () => import('@/views/landing/ComplexLandingView.vue'),
+    meta: { public: true },
+  },
+  {
+    path: '/landing',
+    redirect: '/',
+  },
   {
     path: '/:pathMatch(.*)*',
-    name: 'complex-not-found',
-    component: () => import('@/views/ComplexNotFoundView.vue'),
+    name: 'landing-catch-all',
+    component: () => import('@/views/landing/ComplexLandingView.vue'),
     meta: { public: true },
   },
 ]
@@ -417,7 +427,7 @@ const appRoutes: RouteRecordRaw[] = [
 
 const router = createRouter({
   history: createWebHistory(complexLocation.base),
-  routes: complexLocation.slug ? appRoutes : notFoundRoutes,
+  routes: complexLocation.slug ? appRoutes : landingRoutes,
 })
 
 router.beforeEach((to) => {
