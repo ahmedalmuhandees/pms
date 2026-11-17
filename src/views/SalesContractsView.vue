@@ -473,7 +473,7 @@ function toDisplayMoney(iqdAmount: number) {
 }
 
 function applyUsdMeterPricingFromUnit() {
-  if (!isSystemPricing.value || !isUsdDisplay.value) return
+  if (!isUsdDisplay.value) return
   const rate = Number(form.exchangeRateUsd || 0)
   const meterUsd = Number(form.pricePerMeterUsd || 0)
   const area = selectedUnitArea.value
@@ -485,17 +485,30 @@ function applyUsdMeterPricingFromUnit() {
 
   const ratio = previous > 0 ? next / previous : 1
   form.sellingPrice = next
-  form.downPayment = Math.round(Number(form.downPayment || 0) * ratio)
-  form.deliveryAmount = Math.round(Number(form.deliveryAmount || 0) * ratio)
+
+  // في التسعير اليدوي/تغيير الأماكن بالنسب لا نضرب النسب؛ فقط المبالغ
+  if (!(isEditablePricing.value && isPercentage.value)) {
+    form.downPayment = Math.round(Number(form.downPayment || 0) * ratio)
+    form.deliveryAmount = Math.round(Number(form.deliveryAmount || 0) * ratio)
+  }
   form.discount = Math.round(Number(form.discount || 0) * ratio)
   form.tax = Math.round(Number(form.tax || 0) * ratio)
   form.registrationFee = Math.round(Number(form.registrationFee || 0) * ratio)
 
   if (installmentRows.value.length) {
-    installmentRows.value = installmentRows.value.map((r) => ({
-      ...r,
-      amount: Math.round(Number(r.amount || 0) * ratio),
-    }))
+    installmentRows.value = installmentRows.value.map((r) => {
+      if (
+        r.kind === PricePlanScheduleKind.Delivery ||
+        r.kind === PricePlanScheduleKind.DownPayment
+      ) {
+        return r
+      }
+      return {
+        ...r,
+        amount: Math.round(Number(r.amount || 0) * ratio),
+      }
+    })
+    if (isCustomSchedulePricing.value) syncSpecialScheduleAmounts()
   }
   if (downPaymentRows.value.length) {
     downPaymentRows.value = downPaymentRows.value.map((r) => ({
@@ -528,16 +541,20 @@ const contractNumberSequence = computed(() => {
   return seq && seq > 0 ? seq : 1
 })
 
-const isCash = computed(() => form.contractPaymentType === ContractPaymentType.Cash)
-const isBank = computed(() => form.contractPaymentType === ContractPaymentType.RealEstateBank)
+/** تطبيع قيمة Select (قد تأتي نصاً من PrimeVue) */
+const pricingModeValue = computed(() => Number(form.pricingMode))
+const paymentTypeValue = computed(() => Number(form.contractPaymentType))
+
+const isCash = computed(() => paymentTypeValue.value === ContractPaymentType.Cash)
+const isBank = computed(() => paymentTypeValue.value === ContractPaymentType.RealEstateBank)
 const isCashInstallments = computed(
-  () => form.contractPaymentType === ContractPaymentType.CashInstallments,
+  () => paymentTypeValue.value === ContractPaymentType.CashInstallments,
 )
 const usesInstallments = computed(() => isBank.value || isCashInstallments.value)
-const isSystemPricing = computed(() => form.pricingMode === PricingMode.System)
-const isManualPricing = computed(() => form.pricingMode === PricingMode.Manual)
+const isSystemPricing = computed(() => pricingModeValue.value === PricingMode.System)
+const isManualPricing = computed(() => pricingModeValue.value === PricingMode.Manual)
 const isCustomSchedulePricing = computed(
-  () => form.pricingMode === PricingMode.CustomSchedule,
+  () => pricingModeValue.value === PricingMode.CustomSchedule,
 )
 /** تسعير قابل للتحرير يدوياً (يدوي أو تغيير أماكن الدفعات) */
 const isEditablePricing = computed(
@@ -1229,7 +1246,19 @@ watch(
   },
 )
 
+function ensureInstallmentDefaults() {
+  form.years = form.years && form.years > 0 ? form.years : 1
+  form.paymentIntervalMonths =
+    form.paymentIntervalMonths && form.paymentIntervalMonths > 0
+      ? form.paymentIntervalMonths
+      : 1
+  if (!firstInstallmentDateModel.value) firstInstallmentDateModel.value = new Date()
+}
+
 function onPricingModeChange() {
+  // ثبّت القيمة رقمياً حتى لا تفشل المقارنات مع Select
+  form.pricingMode = Number(form.pricingMode) as typeof form.pricingMode
+
   if (isSystemPricing.value) {
     applyPricePlan(form.pricePlanId)
     return
@@ -1238,10 +1267,19 @@ function onPricingModeChange() {
   if (!isCustomSchedulePricing.value) {
     pricingType.value = PricePlanPricingType.Amount
   }
+
+  if (isCustomSchedulePricing.value) {
+    // الجدول يحتاج أقساط — حوّل الكاش إلى كاش أقساط إن لزم
+    if (isCash.value) {
+      form.contractPaymentType = ContractPaymentType.CashInstallments
+    }
+    ensureInstallmentDefaults()
+    rebuildInstallmentSchedule()
+    return
+  }
+
   if (usesInstallments.value) {
-    form.years = form.years || 1
-    form.paymentIntervalMonths = form.paymentIntervalMonths || 1
-    if (!firstInstallmentDateModel.value) firstInstallmentDateModel.value = new Date()
+    ensureInstallmentDefaults()
   }
   rebuildInstallmentSchedule()
 }
@@ -2157,6 +2195,54 @@ onMounted(async () => {
           />
         </div>
 
+        <div class="field full section-title">سعر الصرف والدولار</div>
+        <div class="field">
+          <label>سعر الصرف بالدولار</label>
+          <InputNumber
+            v-model="form.exchangeRateUsd"
+            :min="0"
+            :min-fraction-digits="0"
+            :max-fraction-digits="4"
+            placeholder="مثال: 1500"
+          />
+          <small class="field-hint">دينار عراقي لكل 1 دولار</small>
+        </div>
+        <div class="field">
+          <label>سعر المتر للوحدة ($)</label>
+          <InputNumber
+            v-model="form.pricePerMeterUsd"
+            :min="0"
+            :min-fraction-digits="0"
+            :max-fraction-digits="4"
+            placeholder="سعر المتر بالدولار"
+          />
+        </div>
+        <div class="field">
+          <label>عرض الأسعار</label>
+          <Select
+            v-model="form.displayCurrency"
+            :options="displayCurrencyOptions"
+            option-label="label"
+            option-value="value"
+            checkmark
+            append-to="body"
+          />
+        </div>
+        <div class="field hint-box">
+          <span>مساحة الوحدة: <strong>{{ selectedUnitArea || '—' }} م²</strong></span>
+          <small v-if="isUsdDisplay && meterPriceIqd">
+            سعر المتر بالدينار = الصرف × سعر المتر =
+            <strong>{{ formatMoney(meterPriceIqd) }}</strong>
+          </small>
+          <small v-if="isUsdDisplay && totalPriceUsd">
+            الإجمالي بالدولار =
+            <strong>{{ totalPriceUsd.toLocaleString('en-US') }} $</strong>
+          </small>
+          <small v-if="isUsdDisplay && form.sellingPrice">
+            سعر البيع المعروض: <strong>{{ toDisplayMoney(form.sellingPrice) }}</strong>
+          </small>
+        </div>
+
         <template v-if="isEditablePricing">
           <div class="field full section-title">
             {{ isCustomSchedulePricing ? 'تغيير اماكن الدفعات' : 'التسعير اليدوي' }}
@@ -2324,60 +2410,169 @@ onMounted(async () => {
               =
               <b :class="{ 'is-bad': computedRemaining < 0 }">{{ formatMoney(computedRemaining) }}</b>
             </p>
-            <small v-if="needsInstallmentSchedule">
+            <small v-if="needsInstallmentSchedule && !isCustomSchedulePricing">
               مجموع جدول الأقساط أدناه يجب أن يطابق هذا الباقي تماماً.
             </small>
             <small v-else-if="usesInstallments && remainingIsZero" class="ok-hint">
               المتبقي صفر — السنوات والأشهر تُحفظ، ولن يُنشأ/يُطبع جدول الأقساط.
             </small>
           </div>
+
+          <!-- جدول تغيير أماكن الدفعات يظهر مباشرة مع هذا المصدر -->
+          <template v-if="isCustomSchedulePricing">
+            <div class="field full section-title">ترتيب الدفعات والأشهر</div>
+            <div class="field">
+              <label>عدد السنوات</label>
+              <InputNumber v-model="form.years" :min="1" :max="40" show-buttons />
+            </div>
+            <div class="field">
+              <label>فترة الدفع (أشهر)</label>
+              <InputNumber v-model="form.paymentIntervalMonths" :min="1" :max="12" show-buttons />
+            </div>
+            <div class="field">
+              <label>تاريخ أول قسط / استلام</label>
+              <DatePicker v-model="firstInstallmentDateModel" date-format="yy-mm-dd" show-icon />
+            </div>
+
+            <div v-if="remainingIsZero" class="field full formula-box">
+              المتبقي صفر — أدخل سعر البيع والمقدمة/الاستلام بحيث يبقى مبلغ للأقساط لبناء الجدول.
+            </div>
+            <div
+              v-else-if="!computedInstallmentCount && form.years && form.paymentIntervalMonths"
+              class="field full formula-box is-warn"
+            >
+              الأشهر الكلية لا تقبل القسمة على فترة الدفع — عدّل السنوات أو عدد الأشهر.
+            </div>
+            <div v-else-if="computedInstallmentCount" class="field full schedule-block">
+              <div class="schedule-head">
+                <div>
+                  <strong>جدول الدفعات المرتّب ({{ installmentRows.length }} صف)</strong>
+                  <small>
+                    رتّب الصفوف (استلام / دفعات / مقدمة) وعدّل الأشهر والتواريخ بأزرار الرفع والإنزال
+                  </small>
+                </div>
+                <Button
+                  label="إعادة بناء الجدول"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  @click="rebuildInstallmentSchedule"
+                />
+              </div>
+
+              <DataTable :value="installmentRows" size="small" striped-rows class="schedule-table">
+                <Column header="ترتيب" style="width: 92px">
+                  <template #body="{ index }">
+                    <div class="order-btns">
+                      <Button
+                        icon="pi pi-arrow-up"
+                        size="small"
+                        text
+                        rounded
+                        :disabled="index === 0"
+                        @click="moveScheduleRow(index, -1)"
+                      />
+                      <Button
+                        icon="pi pi-arrow-down"
+                        size="small"
+                        text
+                        rounded
+                        :disabled="index === installmentRows.length - 1"
+                        @click="moveScheduleRow(index, 1)"
+                      />
+                    </div>
+                  </template>
+                </Column>
+                <Column header="#" style="width: 48px">
+                  <template #body="{ data }">{{ data.index }}</template>
+                </Column>
+                <Column header="النوع" style="width: 88px">
+                  <template #body="{ data }">
+                    <span class="kind-pill" :data-kind="data.kind">{{ kindLabel(data.kind) }}</span>
+                  </template>
+                </Column>
+                <Column header="الاسم">
+                  <template #body="{ data }">
+                    <InputText v-model="data.name" class="w-full" />
+                  </template>
+                </Column>
+                <Column header="الشهر" style="width: 110px">
+                  <template #body="{ data }">
+                    <InputNumber
+                      v-model="data.monthOffset"
+                      :min="0"
+                      :max="480"
+                      show-buttons
+                      @update:model-value="onMonthOffsetEdit(data)"
+                    />
+                  </template>
+                </Column>
+                <Column header="تاريخ الاستحقاق" style="width: 160px">
+                  <template #body="{ data }">
+                    <DatePicker
+                      :model-value="data.dueDate ? new Date(data.dueDate) : null"
+                      date-format="yy-mm-dd"
+                      show-icon
+                      @update:model-value="(v) => onDueDateEdit(data, Array.isArray(v) ? (v[0] ?? null) : (v ?? null))"
+                    />
+                  </template>
+                </Column>
+                <Column v-if="isPercentage" header="النسبة ٪" style="width: 120px">
+                  <template #body="{ data }">
+                    <InputNumber
+                      v-model="data.percent"
+                      :min="0"
+                      :max="100"
+                      :min-fraction-digits="0"
+                      :max-fraction-digits="2"
+                      :disabled="
+                        data.kind === PricePlanScheduleKind.Delivery ||
+                        data.kind === PricePlanScheduleKind.DownPayment
+                      "
+                      @update:model-value="onInstallmentPercentEdit(data)"
+                    />
+                  </template>
+                </Column>
+                <Column header="المبلغ" style="width: 140px">
+                  <template #body="{ data }">
+                    <InputNumber
+                      v-if="
+                        !isPercentage &&
+                        data.kind !== PricePlanScheduleKind.Delivery &&
+                        data.kind !== PricePlanScheduleKind.DownPayment
+                      "
+                      v-model="data.amount"
+                      :min="0"
+                      @update:model-value="onInstallmentAmountEdit(data)"
+                    />
+                    <span v-else>{{ formatMoney(data.amount) }}</span>
+                  </template>
+                </Column>
+              </DataTable>
+
+              <div
+                class="schedule-footer"
+                :class="{ ok: scheduleMatchesRemaining, bad: !scheduleMatchesRemaining }"
+              >
+                <span v-if="isPercentage">
+                  مجموع نسب الدفعات: <strong>{{ scheduleSumPercent }}٪</strong>
+                  / الباقي: <strong>{{ remainingPercent }}٪</strong>
+                </span>
+                <span v-else>
+                  مجموع مبالغ الدفعات: <strong>{{ formatMoney(scheduleSumAmount) }}</strong>
+                  / الباقي: <strong>{{ formatMoney(computedRemaining) }}</strong>
+                </span>
+                <strong>{{ scheduleMatchesRemaining ? 'مطابق ✓' : 'غير مطابق' }}</strong>
+              </div>
+            </div>
+            <div v-else class="field full formula-box is-warn">
+              أدخل سعر البيع وعدد السنوات وفترة الدفع لإظهار جدول الترتيب.
+            </div>
+          </template>
         </template>
 
-        <template v-else>
+        <template v-else-if="isSystemPricing">
           <div class="field full section-title">تسعير خطة الأسعار</div>
-          <div class="field">
-            <label>سعر الصرف بالدولار</label>
-            <InputNumber
-              v-model="form.exchangeRateUsd"
-              :min="0"
-              :min-fraction-digits="0"
-              :max-fraction-digits="4"
-              placeholder="مثال: 1500"
-            />
-            <small class="field-hint">دينار عراقي لكل 1 دولار</small>
-          </div>
-          <div class="field">
-            <label>سعر المتر للوحدة ($)</label>
-            <InputNumber
-              v-model="form.pricePerMeterUsd"
-              :min="0"
-              :min-fraction-digits="0"
-              :max-fraction-digits="4"
-              placeholder="سعر المتر بالدولار"
-            />
-          </div>
-          <div class="field">
-            <label>عرض الأسعار</label>
-            <Select
-              v-model="form.displayCurrency"
-              :options="displayCurrencyOptions"
-              option-label="label"
-              option-value="value"
-              checkmark
-              append-to="body"
-            />
-          </div>
-          <div class="field hint-box">
-            <span>مساحة الوحدة: <strong>{{ selectedUnitArea || '—' }} م²</strong></span>
-            <small v-if="isUsdDisplay && meterPriceIqd">
-              سعر المتر بالدينار = الصرف × سعر المتر =
-              <strong>{{ formatMoney(meterPriceIqd) }}</strong>
-            </small>
-            <small v-if="isUsdDisplay && totalPriceUsd">
-              الإجمالي بالدولار =
-              <strong>{{ totalPriceUsd.toLocaleString('en-US') }} $</strong>
-            </small>
-          </div>
           <div class="field">
             <label>سعر البيع {{ isUsdDisplay ? '(IQD محفوظ)' : '' }}</label>
             <InputNumber v-model="form.sellingPrice" :min="0" disabled />
