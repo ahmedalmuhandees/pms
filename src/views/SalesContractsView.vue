@@ -450,18 +450,21 @@ const selectedUnitArea = computed(() => {
   return Number(unit?.area || 0)
 })
 
-const meterPriceIqd = computed(() => {
+/** سعر المتر بالدينار (الحقل بجانب سعر الصرف). */
+const meterPriceIqd = computed(() => Number(form.pricePerMeterUsd || 0))
+
+const meterPriceUsd = computed(() => {
   const rate = Number(form.exchangeRateUsd || 0)
-  const meterUsd = Number(form.pricePerMeterUsd || 0)
-  if (rate <= 0 || meterUsd <= 0) return 0
-  return Math.round(rate * meterUsd)
+  const meterIqd = meterPriceIqd.value
+  if (rate <= 0 || meterIqd <= 0) return 0
+  return Math.round((meterIqd / rate) * 100) / 100
 })
 
 const totalPriceUsd = computed(() => {
-  const meterUsd = Number(form.pricePerMeterUsd || 0)
-  const area = selectedUnitArea.value
-  if (meterUsd <= 0 || area <= 0) return 0
-  return Math.round(meterUsd * area * 100) / 100
+  const rate = Number(form.exchangeRateUsd || 0)
+  const selling = Number(form.sellingPrice || 0)
+  if (rate <= 0 || selling <= 0) return 0
+  return Math.round((selling / rate) * 100) / 100
 })
 
 function toDisplayMoney(iqdAmount: number) {
@@ -473,20 +476,19 @@ function toDisplayMoney(iqdAmount: number) {
 }
 
 function applyUsdMeterPricingFromUnit() {
-  if (!isUsdDisplay.value) return
   const rate = Number(form.exchangeRateUsd || 0)
-  const meterUsd = Number(form.pricePerMeterUsd || 0)
+  const meterIqd = Number(form.pricePerMeterUsd || 0)
   const area = selectedUnitArea.value
-  if (rate <= 0 || meterUsd <= 0 || area <= 0) return
+  if (rate <= 0 || meterIqd <= 0 || area <= 0) return
 
   const previous = Number(form.sellingPrice || 0)
-  const next = Math.round(rate * meterUsd * area)
+  // سعر البيع = سعر المتر (دينار) × المساحة
+  const next = Math.round(meterIqd * area)
   if (next <= 0 || next === previous) return
 
   const ratio = previous > 0 ? next / previous : 1
   form.sellingPrice = next
 
-  // في التسعير اليدوي/تغيير الأماكن بالنسب لا نضرب النسب؛ فقط المبالغ
   if (!(isEditablePricing.value && isPercentage.value)) {
     form.downPayment = Math.round(Number(form.downPayment || 0) * ratio)
     form.deliveryAmount = Math.round(Number(form.deliveryAmount || 0) * ratio)
@@ -501,7 +503,13 @@ function applyUsdMeterPricingFromUnit() {
         r.kind === PricePlanScheduleKind.Delivery ||
         r.kind === PricePlanScheduleKind.DownPayment
       ) {
-        return r
+        return {
+          ...r,
+          amount:
+            r.kind === PricePlanScheduleKind.Delivery
+              ? Number(form.deliveryAmount || 0)
+              : Number(form.downPayment || 0),
+        }
       }
       return {
         ...r,
@@ -1609,9 +1617,21 @@ function buildPayload(): CreateSalesContractDto {
         deliveryDateModel.value = new Date(delivery.dueDate)
       }
 
+      // الجدول الكامل بالترتيب كما في المودال (للطباعة)
+      ;(payload as any).paymentSchedule = installmentRows.value.map((r, i) => ({
+        index: i + 1,
+        kind: Number(r.kind ?? PricePlanScheduleKind.Installment),
+        name: r.name?.trim() || null,
+        dueDate: r.dueDate || firstInstallmentDateModel.value?.toISOString() || new Date().toISOString(),
+        amount: Math.round(r.amount || 0),
+        percent: r.percent ?? null,
+      }))
+
       const installments = installmentOnlyRows.value
       payload.installmentSchedule = installments.map((r, i) => ({
         index: i + 1,
+        kind: PricePlanScheduleKind.Installment,
+        name: r.name?.trim() || null,
         dueDate: r.dueDate || firstInstallmentDateModel.value?.toISOString() || new Date().toISOString(),
         amount: Math.round(r.amount || 0),
         percent: r.percent ?? null,
@@ -2208,14 +2228,15 @@ onMounted(async () => {
           <small class="field-hint">دينار عراقي لكل 1 دولار</small>
         </div>
         <div class="field">
-          <label>سعر المتر للوحدة ($)</label>
+          <label>سعر المتر الواحد (دينار)</label>
           <InputNumber
             v-model="form.pricePerMeterUsd"
             :min="0"
             :min-fraction-digits="0"
-            :max-fraction-digits="4"
-            placeholder="سعر المتر بالدولار"
+            :max-fraction-digits="0"
+            placeholder="سعر المتر بالدينار"
           />
+          <small class="field-hint">سعر البيع = سعر المتر × المساحة</small>
         </div>
         <div class="field">
           <label>عرض الأسعار</label>
@@ -2230,9 +2251,13 @@ onMounted(async () => {
         </div>
         <div class="field hint-box">
           <span>مساحة الوحدة: <strong>{{ selectedUnitArea || '—' }} م²</strong></span>
-          <small v-if="isUsdDisplay && meterPriceIqd">
-            سعر المتر بالدينار = الصرف × سعر المتر =
-            <strong>{{ formatMoney(meterPriceIqd) }}</strong>
+          <small v-if="meterPriceIqd && selectedUnitArea">
+            سعر البيع (دينار) =
+            <strong>{{ formatMoney(Math.round(meterPriceIqd * selectedUnitArea)) }}</strong>
+          </small>
+          <small v-if="meterPriceUsd">
+            سعر المتر بالدولار =
+            <strong>{{ meterPriceUsd.toLocaleString('en-US') }} $</strong>
           </small>
           <small v-if="isUsdDisplay && totalPriceUsd">
             الإجمالي بالدولار =
@@ -2240,6 +2265,12 @@ onMounted(async () => {
           </small>
           <small v-if="isUsdDisplay && form.sellingPrice">
             سعر البيع المعروض: <strong>{{ toDisplayMoney(form.sellingPrice) }}</strong>
+          </small>
+          <small v-if="isUsdDisplay && form.downPayment">
+            المقدمة: <strong>{{ toDisplayMoney(form.downPayment) }}</strong>
+          </small>
+          <small v-if="isUsdDisplay && form.deliveryAmount">
+            الاستلام: <strong>{{ toDisplayMoney(form.deliveryAmount) }}</strong>
           </small>
         </div>
 
@@ -2533,7 +2564,7 @@ onMounted(async () => {
                     />
                   </template>
                 </Column>
-                <Column header="المبلغ" style="width: 140px">
+                <Column header="المبلغ" style="width: 160px">
                   <template #body="{ data }">
                     <InputNumber
                       v-if="
@@ -2546,6 +2577,7 @@ onMounted(async () => {
                       @update:model-value="onInstallmentAmountEdit(data)"
                     />
                     <span v-else>{{ formatMoney(data.amount) }}</span>
+                    <small v-if="isUsdDisplay" class="field-hint">{{ toDisplayMoney(data.amount) }}</small>
                   </template>
                 </Column>
               </DataTable>
@@ -2559,8 +2591,8 @@ onMounted(async () => {
                   / الباقي: <strong>{{ remainingPercent }}٪</strong>
                 </span>
                 <span v-else>
-                  مجموع مبالغ الدفعات: <strong>{{ formatMoney(scheduleSumAmount) }}</strong>
-                  / الباقي: <strong>{{ formatMoney(computedRemaining) }}</strong>
+                  مجموع مبالغ الدفعات: <strong>{{ toDisplayMoney(scheduleSumAmount) }}</strong>
+                  / الباقي: <strong>{{ toDisplayMoney(computedRemaining) }}</strong>
                 </span>
                 <strong>{{ scheduleMatchesRemaining ? 'مطابق ✓' : 'غير مطابق' }}</strong>
               </div>

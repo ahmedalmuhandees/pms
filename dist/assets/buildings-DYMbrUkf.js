@@ -1,0 +1,1 @@
+import{c as e,u as t}from"./index-BBQLUdTa.js";async function n(n){return t(await e.get(`/api/Buildings`,{params:n}))}async function r(n){return t(await e.post(`/api/Buildings`,n))}async function i(n,r){return t(await e.put(`/api/Buildings/${n}`,r))}async function a(n){return t(await e.delete(`/api/Buildings/${n}`))}export{i,a as n,n as r,r as t};

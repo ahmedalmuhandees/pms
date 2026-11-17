@@ -848,6 +848,8 @@ export interface ContractInstallmentScheduleItem {
   dueDate: string
   amount: number
   percent?: number | null
+  kind?: number | null
+  name?: string | null
 }
 
 export interface ContractDownPaymentScheduleItem {
@@ -890,6 +892,8 @@ export interface CreateSalesContractDto {
   installmentSchedule?: ContractInstallmentScheduleItem[] | null
   /** جدول تقسيط المقدمة — مجموع المبالغ = المقدمة */
   downPaymentSchedule?: ContractDownPaymentScheduleItem[] | null
+  /** جدول الدفعات الكامل بالترتيب (تغيير اماكن الدفعات) */
+  paymentSchedule?: ContractInstallmentScheduleItem[] | null
 }
 
 export type UpdateSalesContractDto = CreateSalesContractDto
