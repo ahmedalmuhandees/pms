@@ -89,6 +89,7 @@ const contractNumberSideOptions = [
 const pdfLayoutKindOptions = [
   { label: 'قياسي (بدون تغيير على المجمعات السابقة)', value: PdfLayoutKind.Standard },
   { label: 'دريم سيتي', value: PdfLayoutKind.DreamCity },
+  { label: 'قالب مرفوع (أبراج سما / PDF كامل)', value: PdfLayoutKind.TemplateOverlay },
 ]
 
 const applyingDreamCity = ref(false)
@@ -97,16 +98,26 @@ const isDreamCityLayout = computed(() => {
   const kind = form.pdfLayoutKind
   return kind === PdfLayoutKind.DreamCity || kind === 'DreamCity' || kind === 1
 })
+const isTemplateOverlayLayout = computed(() => {
+  const kind = form.pdfLayoutKind
+  return kind === PdfLayoutKind.TemplateOverlay || kind === 'TemplateOverlay' || kind === 2
+})
 
 function normalizePdfLayoutKind(value: unknown): number {
   if (value === PdfLayoutKind.DreamCity || value === 'DreamCity' || value === 1) {
     return PdfLayoutKind.DreamCity
   }
+  if (value === PdfLayoutKind.TemplateOverlay || value === 'TemplateOverlay' || value === 2) {
+    return PdfLayoutKind.TemplateOverlay
+  }
   return PdfLayoutKind.Standard
 }
 
 function layoutKindLabel(value: unknown): string {
-  return normalizePdfLayoutKind(value) === PdfLayoutKind.DreamCity ? 'دريم سيتي' : 'قياسي'
+  const kind = normalizePdfLayoutKind(value)
+  if (kind === PdfLayoutKind.DreamCity) return 'دريم سيتي'
+  if (kind === PdfLayoutKind.TemplateOverlay) return 'قالب مرفوع'
+  return 'قياسي'
 }
 
 const pageOptions = [
@@ -660,7 +671,12 @@ onMounted(async () => {
             append-to="body"
           />
           <small class="field-hint">
-            القياسي = سلوك التصاميم السابقة دون تغيير. دريم سيتي = ترتيب/بنود عقد دريم سيتي لهذا المجمع فقط.
+            القياسي = التصاميم السابقة. دريم سيتي = بنود دريم. قالب مرفوع = طباعة PDF (مثل عقد أبراج سما) مع تعبئة المتغيرات وجدول الدفعات بدل الصفحتين الأخيرتين.
+          </small>
+        </div>
+        <div v-if="isTemplateOverlayLayout" class="field full">
+          <small class="field-hint" style="color: var(--p-primary-color)">
+            ارفع ملف PDF للعقد (مثل «عقد معدل 1.pdf»). الصفحات 1–8 تُطبع كما هي مع تعبئة اسم العميل والمساحة ورقم الوحدة، ويُستبدل جدول الدفعات في الصفحتين 9–10 بالدفعات الفعلية من العقد.
           </small>
         </div>
         <div v-if="isDreamCityLayout" class="field full dream-city-actions">

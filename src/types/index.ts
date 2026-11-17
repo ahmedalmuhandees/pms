@@ -718,6 +718,8 @@ export type ContractPaymentType = (typeof ContractPaymentType)[keyof typeof Cont
 export const PricingMode = {
   Manual: 1,
   System: 2,
+  /** جدول دفعات مرتّب قابل لتغيير الترتيب والأشهر */
+  CustomSchedule: 3,
 } as const
 export type PricingMode = (typeof PricingMode)[keyof typeof PricingMode]
 
@@ -812,6 +814,9 @@ export interface SalesContract {
   pricingMode: PricingMode
   pricePlanId: string | null
   contractDesignId?: string | null
+  exchangeRateUsd?: number | null
+  pricePerMeterUsd?: number | null
+  displayCurrency?: 'USD' | 'IQD' | string | null
   sellingPrice: number
   discount: number
   tax: number
@@ -857,6 +862,9 @@ export interface CreateSalesContractDto {
   pricingMode: PricingMode
   pricePlanId?: string | null
   contractDesignId?: string | null
+  exchangeRateUsd?: number | null
+  pricePerMeterUsd?: number | null
+  displayCurrency?: 'USD' | 'IQD' | string | null
   sellingPrice: number
   discount: number
   tax: number
@@ -1010,8 +1018,13 @@ export type ContractNumberSide = 1 | 2 | 'Right' | 'Left' | 'right' | 'left'
 export const PdfLayoutKind = {
   Standard: 0,
   DreamCity: 1,
+  TemplateOverlay: 2,
 } as const
-export type PdfLayoutKind = (typeof PdfLayoutKind)[keyof typeof PdfLayoutKind] | 'Standard' | 'DreamCity'
+export type PdfLayoutKind =
+  | (typeof PdfLayoutKind)[keyof typeof PdfLayoutKind]
+  | 'Standard'
+  | 'DreamCity'
+  | 'TemplateOverlay'
 
 export interface ClausePageGroup {
   /** رقم الصفحة (الغلاف = 1) */

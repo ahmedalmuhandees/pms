@@ -190,6 +190,7 @@ export const contractPaymentTypeOptions = [
 export const pricingModeOptions = [
   { value: PricingMode.Manual, label: 'يدوي' },
   { value: PricingMode.System, label: 'من خطة الأسعار' },
+  { value: PricingMode.CustomSchedule, label: 'تغيير اماكن الدفعات' },
 ]
 
 export const pricePlanScopeOptions = [

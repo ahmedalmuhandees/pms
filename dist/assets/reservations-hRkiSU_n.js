@@ -1,0 +1,1 @@
+import{c as e,u as t}from"./index-g3qPkqhM.js";async function n(n){return t(await e.get(`/api/Reservations`,{params:n}))}async function r(n){return t(await e.post(`/api/Reservations`,n))}async function i(n,r){return t(await e.put(`/api/Reservations/${n}`,r))}async function a(n){return t(await e.delete(`/api/Reservations/${n}`))}export{i,a as n,n as r,r as t};
