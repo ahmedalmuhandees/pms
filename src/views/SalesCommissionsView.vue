@@ -232,19 +232,29 @@ function complexOf(id: string) {
   return complexes.value.find((c) => c.id === id)
 }
 
+function isSamaComplex(c?: Complex | null) {
+  if (!c) return false
+  const ar = (c.nameAr || '').toLowerCase()
+  const en = (c.name || '').toLowerCase()
+  const slug = (c.portalSlug || '').toLowerCase()
+  return ar.includes('سما') || en.includes('sama') || slug.includes('sama')
+}
+
 function printReceipt(row: SalesCommission) {
   const complex = complexOf(row.complexId)
-  const brandAr = complex?.nameAr || row.complexName || 'المجمع'
-  const brandEn = complex?.name || ''
-  const logoUrl = complex?.logoUrl ? resolveMediaUrl(complex.logoUrl) : ''
-  const address = [complex?.address, complex?.city].filter(Boolean).join(' - ') || ''
+  const logoUrl = complex?.logoUrl
+    ? resolveMediaUrl(complex.logoUrl)
+    : (isSamaComplex(complex) ? '/brands/samalogo.png' : '')
+  const address = [complex?.address, complex?.city].filter(Boolean).join(' - ')
+    || 'بغداد - حي الجهاد الاطباء - سريع مطار بغداد الدولي'
+  const phones = '+(964) 77 5000 9181 - 78 5000 9181'
   const dateStr = formatPrintDate(row.receiptDate)
   const receiptNo = row.receiptNumber?.replace(/^SC-\d+-/, '') || row.receiptNumber
   const amountStr = `${formatMoney(row.commissionAmount)} IQD`
   const words = numberToArabicWords(row.commissionAmount)
   const phone = row.customerPhone?.trim() || '/'
   const pct = formatPercent(row.commissionPercent)
-  const disclaimer = `العمولة الادارية عمولة ${pct}% في حالة تم الاسترجاع يتم خصم ١٪ من مبلغ العمولة`
+  const disclaimer = `العمولة الإدارية ${pct}% في حالة تم الاسترجاع يتم خصم ١٪ من مبلغ العمولة`
   const desc = row.description || `عمولة ${pct}% للشقة رقم ${row.unitNumber || '—'}`
 
   const html = `<!DOCTYPE html>
@@ -253,155 +263,131 @@ function printReceipt(row: SalesCommission) {
 <meta charset="utf-8"/>
 <title>وصل قبض — ${escapeHtml(row.receiptNumber)}</title>
 <style>
-  @page { size: A5 landscape; margin: 8mm; }
+  @page { size: A4 portrait; margin: 12mm; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", Arial, sans-serif;
+    font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", "Arial", sans-serif;
     color: #111;
     background: #fff;
     direction: rtl;
   }
   .sheet {
-    position: relative;
     width: 100%;
-    min-height: 130mm;
-    padding: 10mm 14mm 10mm 10mm;
-    border: 1.5px solid #1a4f9c;
-  }
-  .side-strip {
-    position: absolute;
-    top: 8mm;
-    bottom: 8mm;
-    right: 4mm;
-    width: 0;
-    border-right: 2px dotted #1a4f9c;
-  }
-  .side-contact {
-    position: absolute;
-    top: 50%;
-    right: 1.5mm;
-    transform: translateY(-50%) rotate(90deg);
-    transform-origin: right center;
-    white-space: nowrap;
-    font-size: 9px;
-    color: #1a4f9c;
-    letter-spacing: 0.2px;
+    max-width: 190mm;
+    margin: 0 auto;
+    padding: 6mm 8mm 8mm;
   }
   .header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-  }
-  .brand {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr 1.1fr;
     align-items: center;
-    gap: 10px;
-    min-width: 120px;
+    gap: 8px;
+    margin-bottom: 6px;
   }
-  .brand img { height: 42px; width: auto; object-fit: contain; }
-  .brand-text .ar {
-    font-size: 22px;
-    font-weight: 800;
-    color: #1a4f9c;
-    line-height: 1.1;
-  }
-  .brand-text .en {
-    font-size: 11px;
-    font-weight: 700;
-    color: #1a4f9c;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-  .title-block { text-align: center; flex: 1; }
+  .brand { display: flex; justify-content: flex-end; align-items: center; }
+  .brand img { height: 58px; width: auto; object-fit: contain; }
+  .title-block { text-align: center; }
   .title-block h1 {
     margin: 0;
-    font-size: 26px;
+    font-size: 28px;
     font-weight: 800;
+    letter-spacing: 0.5px;
   }
   .meta {
-    font-size: 13px;
-    line-height: 1.7;
-    min-width: 110px;
-    text-align: left;
+    font-size: 14px;
+    line-height: 1.85;
+    text-align: right;
   }
   .meta strong { font-weight: 700; }
+  .rule {
+    border: 0;
+    border-top: 2px dotted #5eb7e9;
+    margin: 10px 0 14px;
+  }
   .field {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    margin: 7px 0;
-    font-size: 14px;
+    gap: 10px;
+    margin: 10px 0;
+    font-size: 15px;
   }
-  .field .label { white-space: nowrap; font-weight: 600; }
+  .field .label { white-space: nowrap; font-weight: 700; }
   .field .line {
     flex: 1;
-    border-bottom: 1px dotted #444;
-    min-height: 1.2em;
-    padding: 0 6px 2px;
+    border-bottom: 1px dashed #777;
+    min-height: 1.25em;
+    padding: 0 6px 3px;
   }
+  .amount-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0 4px;
+    flex-wrap: wrap;
+  }
+  .amount-row .label { font-weight: 700; font-size: 15px; white-space: nowrap; }
   .amount-box {
     display: inline-block;
-    background: #d9d9d9;
-    border: 1px solid #888;
-    padding: 4px 14px;
-    font-weight: 700;
-    font-size: 15px;
-    min-width: 160px;
+    border: 1.5px solid #111;
+    background: #fff;
+    padding: 6px 18px;
+    font-weight: 800;
+    font-size: 16px;
+    min-width: 170px;
     text-align: center;
   }
   .words {
-    margin: 4px 0 8px;
-    font-size: 14px;
-    font-weight: 600;
-    padding-right: 4px;
+    margin: 2px 0 12px;
+    font-size: 15px;
+    font-weight: 700;
+    padding-right: 2px;
   }
   .warn {
     color: #c00000;
-    font-size: 13px;
-    font-weight: 700;
-    margin: 14px 0 18px;
+    font-size: 14px;
+    font-weight: 800;
+    margin: 18px 0 22px;
     text-align: center;
   }
   .signs {
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
-    margin-top: 8px;
-    padding: 0 20px;
+    align-items: flex-start;
+    margin: 8px 28px 18px;
   }
-  .sign {
-    text-align: center;
-    min-width: 140px;
+  .sign { text-align: center; min-width: 150px; }
+  .sign .role { font-weight: 800; font-size: 16px; margin-bottom: 36px; }
+  .sign .name { font-size: 14px; font-weight: 700; }
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #222;
   }
-  .sign .role { font-weight: 800; font-size: 15px; margin-bottom: 28px; }
-  .sign .name { font-size: 13px; font-weight: 600; border-top: 1px solid transparent; }
+  .footer .addr { text-align: right; }
+  .footer .tel { text-align: left; direction: ltr; unicode-bidi: isolate; }
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .sheet { border-color: #1a4f9c; }
   }
 </style>
 </head>
 <body>
   <div class="sheet">
-    <div class="side-strip"></div>
-    ${address ? `<div class="side-contact">${escapeHtml(address)}</div>` : ''}
     <div class="header">
-      <div class="brand">
-        ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt=""/>` : ''}
-        <div class="brand-text">
-          <div class="ar">${escapeHtml(brandAr)}</div>
-          ${brandEn ? `<div class="en">${escapeHtml(brandEn)}</div>` : ''}
-        </div>
-      </div>
-      <div class="title-block"><h1>وصل قبض</h1></div>
       <div class="meta">
         <div><strong>تاريخ :</strong> ${escapeHtml(dateStr)}</div>
         <div><strong>رقم :</strong> ${escapeHtml(receiptNo)}</div>
       </div>
+      <div class="title-block"><h1>وصل قبض</h1></div>
+      <div class="brand">
+        ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="أبراج سما"/>` : ''}
+      </div>
     </div>
+    <hr class="rule"/>
 
     <div class="field">
       <span class="label">استلمت من السيد/ة</span>
@@ -411,13 +397,13 @@ function printReceipt(row: SalesCommission) {
       <span class="label">رقم الموبايل</span>
       <span class="line">${escapeHtml(phone)}</span>
     </div>
-    <div class="field">
-      <span class="label">مبلغاً وقدره</span>
+    <div class="amount-row">
+      <span class="label">مبلغا و قدره</span>
       <span class="amount-box">${escapeHtml(amountStr)}</span>
     </div>
     <div class="words">${escapeHtml(words)}</div>
     <div class="field">
-      <span class="label">وذلك عن</span>
+      <span class="label">و ذلك عن</span>
       <span class="line">${escapeHtml(desc)}</span>
     </div>
     <div class="field">
@@ -436,6 +422,12 @@ function printReceipt(row: SalesCommission) {
         <div class="role">محاسب</div>
         <div class="name">${escapeHtml(row.accountantName || '—')}</div>
       </div>
+    </div>
+
+    <hr class="rule"/>
+    <div class="footer">
+      <div class="addr">${escapeHtml(address)}</div>
+      <div class="tel">${escapeHtml(phones)}</div>
     </div>
   </div>
   <script>window.onload = function () { window.print(); }<\/script>
@@ -476,7 +468,7 @@ function escapeHtml(value: string) {
 
 function numberToArabicWords(n: number): string {
   const num = Math.round(Math.abs(n || 0))
-  if (num === 0) return 'صفر دينار عراقي'
+  if (num === 0) return 'صفر دينار'
   const ones = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة',
     'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر']
   const tens = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون']
@@ -514,7 +506,7 @@ function numberToArabicWords(n: number): string {
   }
   if (rem) parts.push(underThousand(rem))
 
-  return `${parts.join(' و')} دينار عراقي`
+  return `${parts.join(' و')} دينار`
 }
 
 onMounted(async () => {
