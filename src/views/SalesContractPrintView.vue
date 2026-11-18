@@ -177,11 +177,12 @@ const contractStatusLabel = computed(() =>
   salesContract.value ? labelOf(contractStatusOptions, salesContract.value.contractStatus) : '—',
 )
 
+/** أولوية: سعر المتر من العقد ثم من تصميم العقد */
 const pricePerMeter = computed(() => {
-  const fromDesign = design.value?.pricePerMeter
-  if (fromDesign != null && Number(fromDesign) > 0) return Number(fromDesign)
   const fromContract = salesContract.value?.pricePerMeterUsd
   if (fromContract != null && Number(fromContract) > 0) return Number(fromContract)
+  const fromDesign = design.value?.pricePerMeter
+  if (fromDesign != null && Number(fromDesign) > 0) return Number(fromDesign)
   return null
 })
 

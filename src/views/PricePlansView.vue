@@ -198,6 +198,16 @@ function reindexSchedule() {
   })
 }
 
+/** يزامن أشهر/تواريخ الصفوف مع الترتيب المرئي */
+function redistributeMonthOffsets() {
+  const start = firstInstallmentDateModel.value || new Date()
+  const interval = form.paymentIntervalMonths || 1
+  installmentRows.value.forEach((r, i) => {
+    r.monthOffset = interval * i
+    r.dueDate = addMonths(start, r.monthOffset).toISOString()
+  })
+}
+
 function syncSpecialAmounts() {
   for (const row of installmentRows.value) {
     if (row.kind === PricePlanScheduleKind.Delivery) {
@@ -207,7 +217,7 @@ function syncSpecialAmounts() {
         : form.sellingPrice
           ? Math.round((deliveryAmountValue.value / form.sellingPrice) * 10000) / 100
           : 0
-      row.name = 'الاستلام'
+      row.name = row.name?.trim() || 'الاستلام'
     } else if (row.kind === PricePlanScheduleKind.DownPayment) {
       row.amount = downPaymentAmount.value
       row.percent = isPercentage.value
@@ -215,9 +225,66 @@ function syncSpecialAmounts() {
         : form.sellingPrice
           ? Math.round((downPaymentAmount.value / form.sellingPrice) * 10000) / 100
           : 0
-      row.name = 'دفعة المقدمة'
+      row.name = row.name?.trim() || 'دفعة المقدمة'
     }
   }
+}
+
+/** يحدّث المبالغ/التواريخ دون تغيير ترتيب الأنواع */
+function refreshScheduleInPlace() {
+  const count = installmentCount.value
+  if (!count || remainingAmount.value < 0 || (isPercentage.value && remainingPercent.value < 0)) {
+    installmentRows.value = []
+    return
+  }
+
+  const inst = installmentRows.value.filter(
+    (r) => (r.kind ?? PricePlanScheduleKind.Installment) === PricePlanScheduleKind.Installment,
+  )
+  const hasSpecial = installmentRows.value.some(
+    (r) =>
+      r.kind === PricePlanScheduleKind.Delivery || r.kind === PricePlanScheduleKind.DownPayment,
+  )
+
+  // تغيّر عدد الدفعات أو لا يوجد جدول مخصّص → إعادة بناء كاملة
+  if (!hasSpecial || inst.length !== count) {
+    rebuildInstallmentSchedule()
+    return
+  }
+
+  const start = firstInstallmentDateModel.value || new Date()
+  if (isPercentage.value) {
+    const base = Math.floor((remainingPercent.value / count) * 100) / 100
+    let allocated = 0
+    inst.forEach((row, i) => {
+      const percent =
+        i === count - 1
+          ? Math.round((remainingPercent.value - allocated) * 100) / 100
+          : base
+      allocated = Math.round((allocated + percent) * 100) / 100
+      row.percent = percent
+      row.amount = Math.round(((form.sellingPrice || 0) * percent) / 100)
+    })
+  } else {
+    const base = Math.round(remainingAmount.value / count)
+    let allocated = 0
+    inst.forEach((row, i) => {
+      const amount = i === count - 1 ? remainingAmount.value - allocated : base
+      allocated += amount
+      row.amount = amount
+      row.percent = form.sellingPrice
+        ? Math.round((amount / form.sellingPrice) * 10000) / 100
+        : 0
+    })
+  }
+
+  syncSpecialAmounts()
+  installmentRows.value.forEach((r) => {
+    const offset = Math.max(0, Math.round(r.monthOffset || 0))
+    r.monthOffset = offset
+    r.dueDate = addMonths(start, offset).toISOString()
+  })
+  reindexSchedule()
 }
 
 /** يبني جدولاً موحداً: استلام → دفعات → مقدمة (قابل لإعادة الترتيب) */
@@ -322,6 +389,7 @@ function moveScheduleRow(index: number, direction: -1 | 1) {
   copy.splice(target, 0, item)
   installmentRows.value = copy
   reindexSchedule()
+  redistributeMonthOffsets()
 }
 
 function onMonthOffsetEdit(row: PricePlanInstallmentItem) {
@@ -370,7 +438,8 @@ watch(
   ],
   () => {
     if (suppressScheduleRebuild.value) return
-    rebuildInstallmentSchedule()
+    // لا تُعد بناء الجدول من الصفر إن كان المستخدم رتّب الصفوف يدوياً
+    refreshScheduleInPlace()
   },
 )
 

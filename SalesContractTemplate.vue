@@ -333,12 +333,18 @@ const areaValue = computed(() => formatAreaNumber(g(props.unit, 'Area')))
 
 const sellingPrice = computed(() => Number(g(props.salesContract, 'SellingPrice')))
 const rate = computed(() => Number(g(props.salesContract, 'ExchangeRateUsd')))
-const isUsd = computed(() => rate.value > 0 && sellingPrice.value > 0)
+/** عرض بالدولار عند DisplayCurrency=USD أو وجود سعر صرف */
+const isUsd = computed(() => {
+  const cur = clean(g(props.salesContract, 'DisplayCurrency')).toUpperCase()
+  if (cur === 'IQD') return false
+  if (cur === 'USD') return rate.value > 0
+  return rate.value > 0 && sellingPrice.value > 0
+})
 
 const totalPriceText = computed(() => {
   if (!(sellingPrice.value > 0)) return ''
   return isUsd.value
-    ? formatMoneyCompact(sellingPrice.value / rate.value) + '$'
+    ? formatMoneyCompact(sellingPrice.value / rate.value, 2) + ' $'
     : formatMoneyCompact(sellingPrice.value) + ' دينار عراقي'
 })
 
@@ -361,23 +367,42 @@ const paymentIntervalText = computed(() => {
   return `${m} أشهر`
 })
 
+/**
+ * سعر المتر:
+ * - القيمة الصريحة إن وُجدت: إن كانت صغيرة (<100000) تُعامل كدولار، وإلا كدينار
+ * - وإلا: سعر البيع ÷ المساحة
+ */
 const meterPriceText = computed(() => {
-  const ppm = props.pricePerMeter != null ? Number(props.pricePerMeter) : NaN
   const area = Number(g(props.unit, 'Area'))
-  if (isFinite(ppm) && ppm > 0) {
-    if (rate.value > 0) {
-      const usd = ppm < 100_000 ? ppm : ppm / rate.value
-      return annexMoney(usd)
+  const fromContract = Number(g(props.salesContract, 'PricePerMeterUsd'))
+  const ppmRaw =
+    props.pricePerMeter != null && Number(props.pricePerMeter) > 0
+      ? Number(props.pricePerMeter)
+      : fromContract > 0
+        ? fromContract
+        : NaN
+
+  if (isUsd.value && rate.value > 0) {
+    let usd: number
+    if (isFinite(ppmRaw) && ppmRaw > 0) {
+      usd = ppmRaw < 100_000 ? ppmRaw : ppmRaw / rate.value
+    } else if (area > 0 && sellingPrice.value > 0) {
+      usd = sellingPrice.value / area / rate.value
+    } else {
+      return '—'
     }
-    return annexMoney(ppm)
+    return formatAnnexNumber(usd, 2) + ' $'
   }
-  if (area > 0 && sellingPrice.value > 0 && rate.value > 0) {
-    return annexMoney(sellingPrice.value / area / rate.value)
+
+  let iqd: number
+  if (isFinite(ppmRaw) && ppmRaw > 0) {
+    iqd = ppmRaw < 100_000 && rate.value > 0 ? ppmRaw * rate.value : ppmRaw
+  } else if (area > 0 && sellingPrice.value > 0) {
+    iqd = sellingPrice.value / area
+  } else {
+    return '—'
   }
-  if (area > 0 && sellingPrice.value > 0) {
-    return annexMoney(sellingPrice.value / area)
-  }
-  return '—'
+  return formatAnnexNumber(iqd, 0)
 })
 
 const paymentRows = computed(() => {
@@ -451,15 +476,29 @@ const paymentRows = computed(() => {
   return rows
 })
 
-/** مبالغ ملحق الدفعات — فاصل آلاف بفاصلة كما في التصميم المرجعي */
+/** تنسيق رقم للملحق (فاصل آلاف بفاصلة) */
+function formatAnnexNumber(n: number, fractionDigits = 0) {
+  if (!isFinite(n)) return '—'
+  if (fractionDigits > 0) {
+    return (Math.round(n * 100) / 100).toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: fractionDigits,
+    })
+  }
+  return Math.round(n).toLocaleString('en-US')
+}
+
+/**
+ * مبالغ ملحق الدفعات/البيانات المالية — المبالغ مخزّنة بالدينار.
+ * عند عرض الدولار: تحويل ÷ سعر الصرف + لاحقة $
+ */
 function annexMoney(v: unknown) {
   const n = Number(v)
   if (!isFinite(n)) return '—'
-  if (rate.value > 0) {
-    const usd = Math.round((n / rate.value) * 100) / 100
-    return usd.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  if (isUsd.value && rate.value > 0) {
+    return formatAnnexNumber(n / rate.value, 2) + ' $'
   }
-  return Math.round(n).toLocaleString('en-US')
+  return formatAnnexNumber(n, 0)
 }
 
 function formatDate(value: unknown) {
