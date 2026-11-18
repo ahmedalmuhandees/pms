@@ -16,6 +16,7 @@ import type {
   Complex,
   ContractDesign,
   ContractDownPaymentScheduleItem,
+  ContractInstallmentScheduleItem,
   CreateSalesContractDto,
   Customer,
   Employee,
@@ -1391,11 +1392,13 @@ async function openEdit(row: SalesContract | SalesTableRow) {
 
   let existingInstallments = contract.installments ?? []
   let existingDown = contract.downPaymentInstallments ?? contract.downPaymentSchedule ?? []
+  let savedPaymentSchedule = contract.paymentSchedule ?? null
   try {
     const full = await getSalesContract(contract.id)
     if (full.installments?.length) existingInstallments = full.installments
     if (full.downPaymentInstallments?.length) existingDown = full.downPaymentInstallments
     else if (full.downPaymentSchedule?.length) existingDown = full.downPaymentSchedule
+    if (full.paymentSchedule?.length) savedPaymentSchedule = full.paymentSchedule
   } catch {
     /* استخدم الأقساط من الصف إن وُجدت */
   }
@@ -1409,6 +1412,33 @@ async function openEdit(row: SalesContract | SalesTableRow) {
 
   if (form.pricingMode === PricingMode.CustomSchedule) {
     const start = firstInstallmentDateModel.value || new Date()
+    if (savedPaymentSchedule?.length) {
+      installmentRows.value = savedPaymentSchedule.map((r, i) => {
+        const amount = Math.round(r.amount || 0)
+        const due = r.dueDate ? new Date(r.dueDate) : addMonths(start, i)
+        const kind = (r.kind ?? PricePlanScheduleKind.Installment) as PricePlanScheduleKind
+        const defaultName =
+          kind === PricePlanScheduleKind.DownPayment
+            ? 'دفعة المقدمة'
+            : kind === PricePlanScheduleKind.Delivery
+              ? 'الاستلام'
+              : installmentArabicName(i + 1)
+        return {
+          index: r.index || i + 1,
+          kind,
+          name: r.name?.trim() || defaultName,
+          monthOffset: monthsBetween(start, due),
+          dueDate: due.toISOString(),
+          amount,
+          percent:
+            r.percent ??
+            (form.sellingPrice ? Math.round((amount / form.sellingPrice) * 10000) / 100 : 0),
+        }
+      })
+      reindexSchedule()
+      downPaymentScheduleEnabled.value = false
+      downPaymentRows.value = []
+    } else {
     const rows: PricePlanInstallmentItem[] = []
     if (deliveryAmountValue.value > 0) {
       rows.push({
@@ -1462,6 +1492,7 @@ async function openEdit(row: SalesContract | SalesTableRow) {
     else reindexSchedule()
     downPaymentScheduleEnabled.value = false
     downPaymentRows.value = []
+    }
   } else if (activeInstallments.length > 0) {
     installmentRows.value = activeInstallments
       .slice()
@@ -1617,8 +1648,8 @@ function buildPayload(): CreateSalesContractDto {
         deliveryDateModel.value = new Date(delivery.dueDate)
       }
 
-      // الجدول الكامل بالترتيب كما في المودال (للطباعة)
-      ;(payload as any).paymentSchedule = installmentRows.value.map((r, i) => ({
+      // الجدول الكامل بالترتيب كما في المودال (للطباعة/إعادة التحميل)
+      payload.paymentSchedule = installmentRows.value.map((r, i) => ({
         index: i + 1,
         kind: Number(r.kind ?? PricePlanScheduleKind.Installment),
         name: r.name?.trim() || null,
@@ -2900,6 +2931,30 @@ onMounted(async () => {
             <div><span>أول قسط</span><strong>{{ formatDate(detailContract.firstInstallmentDate) }}</strong></div>
             <div><span>عدد الأشهر</span><strong>{{ detailContract.monthsCount || '—' }}</strong></div>
           </template>
+        </div>
+
+        <div v-if="detailContract.paymentSchedule?.length" class="installments-block">
+          <h4>جدول الدفعات المرتّب ({{ detailContract.paymentSchedule.length }})</h4>
+          <DataTable :value="detailContract.paymentSchedule" size="small" striped-rows>
+            <Column header="#">
+              <template #body="{ index }">{{ index + 1 }}</template>
+            </Column>
+            <Column header="البند">
+              <template #body="{ data }: { data: ContractInstallmentScheduleItem }">
+                {{ data.name || '—' }}
+              </template>
+            </Column>
+            <Column header="الاستحقاق">
+              <template #body="{ data }: { data: ContractInstallmentScheduleItem }">
+                {{ formatDate(data.dueDate) }}
+              </template>
+            </Column>
+            <Column header="المبلغ">
+              <template #body="{ data }: { data: ContractInstallmentScheduleItem }">
+                {{ formatMoney(data.amount) }}
+              </template>
+            </Column>
+          </DataTable>
         </div>
 
         <div v-if="detailContract.installments?.length" class="installments-block">
