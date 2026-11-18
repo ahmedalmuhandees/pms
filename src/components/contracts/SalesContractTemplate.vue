@@ -461,16 +461,6 @@ function annexMoney(v: unknown) {
   return Math.round(n).toLocaleString('en-US')
 }
 
-function moneyText(v: unknown) {
-  const n = Number(v)
-  if (!isFinite(n)) return '—'
-  if (rate.value > 0) {
-    const usd = Math.round((n / rate.value) * 100) / 100
-    return formatMoneyCompact(usd, 2) + ' $'
-  }
-  return formatMoneyCompact(n, 0) + ' د.ع'
-}
-
 function formatDate(value: unknown) {
   if (!value) return ''
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value))
