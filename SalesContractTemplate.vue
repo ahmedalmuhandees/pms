@@ -461,16 +461,6 @@ function annexMoney(v: unknown) {
   return Math.round(n).toLocaleString('en-US')
 }
 
-function moneyText(v: unknown) {
-  const n = Number(v)
-  if (!isFinite(n)) return '—'
-  if (rate.value > 0) {
-    const usd = Math.round((n / rate.value) * 100) / 100
-    return formatMoneyCompact(usd, 2) + ' $'
-  }
-  return formatMoneyCompact(n, 0) + ' د.ع'
-}
-
 function formatDate(value: unknown) {
   if (!value) return ''
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value))
@@ -550,25 +540,25 @@ function formatMoneyCompact(v: unknown, fractionDigits = 0) {
 .plan { min-height: 140mm; display: flex; align-items: center; justify-content: center; }
 .plan :deep(img) { max-width: 100%; max-height: 150mm; }
 
-/* ملحق جدول التسديد — مطابق للتصميم المرجعي */
+/* ملحق جدول التسديد — مضغوط ليتسع جدول الدفعات في نفس الصفحة */
 .finance-annex {
   text-align: right;
 }
 .finance-main-title {
-  font-size: 18pt;
+  font-size: 14pt;
   font-weight: 700;
   text-align: center;
-  margin: 0 0 18pt;
-  line-height: 1.4;
+  margin: 0 0 8pt;
+  line-height: 1.3;
 }
 .finance-section-title {
-  font-size: 13pt;
+  font-size: 11pt;
   font-weight: 700;
-  margin: 0 0 8pt;
+  margin: 0 0 4pt;
   text-align: right;
 }
 .finance-annex .pay-title {
-  margin-top: 18pt;
+  margin-top: 10pt;
 }
 
 .fin-grid {
@@ -578,16 +568,16 @@ function formatMoneyCompact(v: unknown, fractionDigits = 0) {
   border: 1px solid #b0b0b0;
   border-left: none;
   border-bottom: none;
-  margin: 0 0 4pt;
+  margin: 0 0 2pt;
 }
 .fin-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 6pt;
-  min-height: 52pt;
-  padding: 6pt 8pt 10pt;
+  justify-content: center;
+  gap: 2pt;
+  min-height: 0;
+  padding: 3pt 5pt 4pt;
   border-left: 1px solid #b0b0b0;
   border-bottom: 1px solid #b0b0b0;
   box-sizing: border-box;
@@ -597,16 +587,16 @@ function formatMoneyCompact(v: unknown, fractionDigits = 0) {
   align-self: flex-end;
   width: 100%;
   text-align: right;
-  font-size: 9.5pt;
+  font-size: 7.5pt;
   font-weight: 400;
-  color: #222;
-  line-height: 1.3;
+  color: #333;
+  line-height: 1.2;
 }
 .fin-value {
-  font-size: 12pt;
+  font-size: 9.5pt;
   font-weight: 700;
   color: #000;
-  line-height: 1.35;
+  line-height: 1.2;
   word-break: break-word;
 }
 
@@ -614,7 +604,7 @@ function formatMoneyCompact(v: unknown, fractionDigits = 0) {
   width: 100%;
   border-collapse: collapse;
   margin: 0;
-  font-size: 11.5pt;
+  font-size: 9.5pt;
   table-layout: fixed;
 }
 .pay-table thead th {
@@ -622,12 +612,12 @@ function formatMoneyCompact(v: unknown, fractionDigits = 0) {
   color: #fff;
   font-weight: 700;
   text-align: center;
-  padding: 9pt 8pt;
+  padding: 5pt 4pt;
   border: none;
 }
 .pay-table tbody td {
   text-align: center;
-  padding: 10pt 8pt;
+  padding: 4pt 4pt;
   border: none;
   border-bottom: 1px solid #cfcfcf;
   background: transparent;
