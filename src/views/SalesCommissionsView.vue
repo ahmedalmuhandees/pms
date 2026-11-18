@@ -242,19 +242,20 @@ function isSamaComplex(c?: Complex | null) {
 
 function printReceipt(row: SalesCommission) {
   const complex = complexOf(row.complexId)
-  const logoUrl = complex?.logoUrl
-    ? resolveMediaUrl(complex.logoUrl)
-    : (isSamaComplex(complex) ? '/brands/samalogo.png' : '')
+  // الشعار الأصلي دائماً لمجمع سما (أيقونة + أبراج سما + SAMA TOWERS)
+  const logoUrl = isSamaComplex(complex)
+    ? '/brands/samalogo.png'
+    : (complex?.logoUrl ? resolveMediaUrl(complex.logoUrl) : '')
   const address = [complex?.address, complex?.city].filter(Boolean).join(' - ')
     || 'بغداد - حي الجهاد الاطباء - سريع مطار بغداد الدولي'
   const phones = '+(964) 77 5000 9181 - 78 5000 9181'
   const dateStr = formatPrintDate(row.receiptDate)
   const receiptNo = row.receiptNumber?.replace(/^SC-\d+-/, '') || row.receiptNumber
-  const amountStr = `${formatMoney(row.commissionAmount)} IQD`
+  const amountStr = `${formatMoney(row.commissionAmount)}IQD`
   const words = numberToArabicWords(row.commissionAmount)
   const phone = row.customerPhone?.trim() || '/'
   const pct = formatPercent(row.commissionPercent)
-  const disclaimer = `العمولة الإدارية ${pct}% في حالة تم الاسترجاع يتم خصم ١٪ من مبلغ العمولة`
+  const disclaimer = `العمولة الادارية ${pct}% في حالة تم الاسترجاع يتم خصم ١% من مبلغ العمولة`
   const desc = row.description || `عمولة ${pct}% للشقة رقم ${row.unitNumber || '—'}`
 
   const html = `<!DOCTYPE html>
@@ -263,151 +264,202 @@ function printReceipt(row: SalesCommission) {
 <meta charset="utf-8"/>
 <title>وصل قبض — ${escapeHtml(row.receiptNumber)}</title>
 <style>
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 landscape; margin: 10mm 12mm; }
   * { box-sizing: border-box; }
-  body {
+  html, body {
     margin: 0;
-    font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", "Arial", sans-serif;
-    color: #111;
+    padding: 0;
     background: #fff;
+    color: #000;
     direction: rtl;
+    font-family: "Arial", "Tahoma", "Segoe UI", sans-serif;
   }
   .sheet {
-    width: 100%;
-    max-width: 190mm;
+    width: 273mm;
+    max-width: 100%;
+    min-height: 180mm;
     margin: 0 auto;
-    padding: 6mm 8mm 8mm;
+    padding: 8mm 10mm 6mm;
+    position: relative;
   }
-  .header {
-    display: grid;
-    grid-template-columns: 1.1fr 1fr 1.1fr;
+  .brand-header {
+    display: flex;
+    flex-direction: row;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
+    justify-content: space-between;
+    min-height: 22mm;
+    margin-bottom: 2mm;
   }
-  .brand { display: flex; justify-content: flex-end; align-items: center; }
-  .brand img { height: 58px; width: auto; object-fit: contain; }
-  .title-block { text-align: center; }
-  .title-block h1 {
+  /* RTL: أول عنصر = اليمين */
+  .brand-title {
+    color: #5eb7e9;
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0;
     margin: 0;
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
+    padding: 0 2mm 0 0;
+    white-space: nowrap;
   }
-  .meta {
-    font-size: 14px;
-    line-height: 1.85;
-    text-align: right;
+  .brand-logo {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 0 0 2mm;
   }
-  .meta strong { font-weight: 700; }
+  .brand-logo img {
+    height: 68px;
+    width: auto;
+    max-width: 170px;
+    object-fit: contain;
+    display: block;
+  }
   .rule {
     border: 0;
-    border-top: 2px dotted #5eb7e9;
-    margin: 10px 0 14px;
+    border-top: 2.5px dashed #5eb7e9;
+    margin: 3mm 0 4mm;
   }
+  .title-row {
+    margin: 1mm 0 3mm;
+    text-align: center;
+  }
+  .title-row h1 {
+    margin: 0;
+    text-align: center;
+    font-size: 28px;
+    font-weight: 700;
+    color: #000;
+  }
+  .meta {
+    text-align: right;
+    font-size: 16px;
+    line-height: 1.7;
+    margin: 0 0 3mm;
+  }
+  .meta strong { font-weight: 700; }
   .field {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
-    margin: 10px 0;
-    font-size: 15px;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 3.2mm 0;
+    font-size: 16px;
   }
-  .field .label { white-space: nowrap; font-weight: 700; }
+  .field .label {
+    white-space: nowrap;
+    font-weight: 700;
+    padding-bottom: 2px;
+  }
   .field .line {
     flex: 1;
-    border-bottom: 1px dashed #777;
-    min-height: 1.25em;
-    padding: 0 6px 3px;
+    min-height: 1.35em;
+    border-bottom: 1.5px dashed #666;
+    text-align: center;
+    font-weight: 400;
+    padding: 0 8px 2px;
   }
   .amount-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin: 12px 0 4px;
-    flex-wrap: wrap;
-  }
-  .amount-row .label { font-weight: 700; font-size: 15px; white-space: nowrap; }
-  .amount-box {
-    display: inline-block;
-    border: 1.5px solid #111;
-    background: #fff;
-    padding: 6px 18px;
-    font-weight: 800;
+    gap: 10px;
+    margin: 3.5mm 0;
     font-size: 16px;
-    min-width: 170px;
-    text-align: center;
   }
-  .words {
-    margin: 2px 0 12px;
-    font-size: 15px;
+  .amount-row .label { font-weight: 700; white-space: nowrap; }
+  .amount-box {
+    border: 1.6px solid #111;
+    padding: 4px 14px;
     font-weight: 700;
-    padding-right: 2px;
+    font-size: 16px;
+    white-space: nowrap;
+    background: #fff;
+  }
+  .amount-words {
+    flex: 1;
+    text-align: center;
+    font-weight: 400;
+    font-size: 16px;
+    border-bottom: 1.5px dashed #666;
+    padding: 0 8px 3px;
+    min-height: 1.35em;
   }
   .warn {
     color: #c00000;
-    font-size: 14px;
-    font-weight: 800;
-    margin: 18px 0 22px;
+    font-size: 15px;
+    font-weight: 700;
     text-align: center;
+    margin: 6mm 0 5mm;
   }
   .signs {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin: 8px 28px 18px;
+    margin: 2mm 18mm 6mm;
   }
-  .sign { text-align: center; min-width: 150px; }
-  .sign .role { font-weight: 800; font-size: 16px; margin-bottom: 36px; }
-  .sign .name { font-size: 14px; font-weight: 700; }
+  .sign { text-align: center; min-width: 140px; }
+  .sign .role { font-weight: 700; font-size: 17px; margin-bottom: 10mm; }
+  .sign .name { font-size: 15px; font-weight: 400; }
   .footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #222;
+    font-size: 13px;
+    font-weight: 700;
+    color: #000;
+    margin-top: 1mm;
   }
   .footer .addr { text-align: right; }
-  .footer .tel { text-align: left; direction: ltr; unicode-bidi: isolate; }
+  .footer .tel { text-align: left; direction: ltr; unicode-bidi: isolate; font-weight: 700; }
+  .sheet-bottom {
+    border: 0;
+    border-bottom: 1px solid #111;
+    margin-top: 4mm;
+  }
   @media print {
+    html, body { background: #fff; }
+    .sheet { width: auto; padding: 0; }
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>
 <body>
   <div class="sheet">
-    <div class="header">
-      <div class="meta">
-        <div><strong>تاريخ :</strong> ${escapeHtml(dateStr)}</div>
-        <div><strong>رقم :</strong> ${escapeHtml(receiptNo)}</div>
-      </div>
-      <div class="title-block"><h1>وصل قبض</h1></div>
-      <div class="brand">
-        ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="أبراج سما"/>` : ''}
+    <div class="brand-header">
+      <div class="brand-title">أبراج سما</div>
+      <div class="brand-logo">
+        ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="SAMA TOWERS"/>` : ''}
       </div>
     </div>
     <hr class="rule"/>
 
+    <div class="title-row">
+      <h1>وصل قبض</h1>
+    </div>
+
+    <div class="meta">
+      <div><strong>تاريخ :</strong> ${escapeHtml(dateStr)}</div>
+      <div><strong>رقم :</strong> ${escapeHtml(receiptNo)}</div>
+    </div>
+
     <div class="field">
-      <span class="label">استلمت من السيد/ة</span>
+      <span class="label">استلمت من السيد/ة :</span>
       <span class="line">${escapeHtml(row.customerName || '—')}</span>
     </div>
     <div class="field">
-      <span class="label">رقم الموبايل</span>
+      <span class="label">رقم الموبايل :</span>
       <span class="line">${escapeHtml(phone)}</span>
     </div>
     <div class="amount-row">
-      <span class="label">مبلغا و قدره</span>
+      <span class="label">مبلغا و قدره :</span>
       <span class="amount-box">${escapeHtml(amountStr)}</span>
+      <span class="amount-words">${escapeHtml(words)}</span>
     </div>
-    <div class="words">${escapeHtml(words)}</div>
     <div class="field">
-      <span class="label">و ذلك عن</span>
+      <span class="label">و ذلك عن :</span>
       <span class="line">${escapeHtml(desc)}</span>
     </div>
     <div class="field">
-      <span class="label">مستشار العقاري</span>
+      <span class="label">مستشار العقاري :</span>
       <span class="line">${escapeHtml(row.consultantName || '—')}</span>
     </div>
 
@@ -429,8 +481,8 @@ function printReceipt(row: SalesCommission) {
       <div class="addr">${escapeHtml(address)}</div>
       <div class="tel">${escapeHtml(phones)}</div>
     </div>
+    <div class="sheet-bottom"></div>
   </div>
-  <script>window.onload = function () { window.print(); }<\/script>
 </body>
 </html>`
 
