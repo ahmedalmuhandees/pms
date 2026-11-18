@@ -163,62 +163,80 @@
 
     <!-- ===================== ملحق المالية وجدول الدفعات ===================== -->
     <section class="annex finance-annex">
-      <h2 class="title">جدول تسديد بنظام الدفعات</h2>
-      <p class="b">البيانات المالية</p>
-      <table class="fin-grid">
-        <tbody>
-          <tr>
-            <th>نوع العقد</th>
-            <td>{{ finance.contractType }}</td>
-            <th>طريقة الدفع</th>
-            <td>{{ finance.paymentType }}</td>
-          </tr>
-          <tr>
-            <th>الحالة</th>
-            <td>{{ finance.status }}</td>
-            <th>وكيل المبيعات</th>
-            <td>{{ finance.salesAgent }}</td>
-          </tr>
-          <tr>
-            <th>سعر البيع</th>
-            <td>{{ moneyText(g(props.salesContract, 'SellingPrice')) }}</td>
-            <th>الخصم</th>
-            <td>{{ moneyText(g(props.salesContract, 'Discount')) }}</td>
-          </tr>
-          <tr>
-            <th>المقدمة</th>
-            <td>{{ moneyText(g(props.salesContract, 'DownPayment')) }}</td>
-            <th>مبلغ الاستلام</th>
-            <td>{{ moneyText(g(props.salesContract, 'DeliveryAmount')) }}</td>
-          </tr>
-          <tr>
-            <th>المتبقي</th>
-            <td>{{ moneyText(g(props.salesContract, 'RemainingAmount')) }}</td>
-            <th>المصرف</th>
-            <td>{{ clean(g(props.salesContract, 'BankName')) || '—' }}</td>
-          </tr>
-          <tr>
-            <th>مبلغ المصرف</th>
-            <td>{{ moneyText(g(props.salesContract, 'FinancedAmount')) }}</td>
-            <th>السنوات</th>
-            <td>{{ yearsText }}</td>
-          </tr>
-          <tr>
-            <th>فترة الدفع</th>
-            <td>{{ paymentIntervalText }}</td>
-            <th>رقم العقد</th>
-            <td dir="ltr">{{ clean(g(props.salesContract, 'ContractNumber')) || '—' }}</td>
-          </tr>
-          <tr>
-            <th>المساحة</th>
-            <td>{{ areaValue ? `${areaValue} م²` : '—' }}</td>
-            <th>سعر المتر</th>
-            <td>{{ meterPriceText }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 class="finance-main-title">جدول تسديد بنظام الدفعات</h2>
 
-      <p class="b pay-title">جدول المدفوعات</p>
+      <h3 class="finance-section-title">البيانات المالية</h3>
+      <div class="fin-grid">
+        <div class="fin-cell">
+          <span class="fin-label">نوع العقد</span>
+          <span class="fin-value">{{ finance.contractType }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">طريقة الدفع</span>
+          <span class="fin-value">{{ finance.paymentType }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">الحالة</span>
+          <span class="fin-value">{{ finance.status }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">وكيل المبيعات</span>
+          <span class="fin-value">{{ finance.salesAgent }}</span>
+        </div>
+
+        <div class="fin-cell">
+          <span class="fin-label">سعر البيع</span>
+          <span class="fin-value">{{ annexMoney(g(props.salesContract, 'SellingPrice')) }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">الخصم</span>
+          <span class="fin-value">{{ annexMoney(g(props.salesContract, 'Discount')) }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">المقدمة</span>
+          <span class="fin-value">{{ annexMoney(g(props.salesContract, 'DownPayment')) }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">مبلغ الاستلام</span>
+          <span class="fin-value">{{ annexMoney(g(props.salesContract, 'DeliveryAmount')) }}</span>
+        </div>
+
+        <div class="fin-cell">
+          <span class="fin-label">المتبقي</span>
+          <span class="fin-value">{{ annexMoney(g(props.salesContract, 'RemainingAmount')) }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">المصرف</span>
+          <span class="fin-value">{{ clean(g(props.salesContract, 'BankName')) || '—' }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">مبلغ المصرف</span>
+          <span class="fin-value">{{ annexMoney(g(props.salesContract, 'FinancedAmount')) }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">السنوات</span>
+          <span class="fin-value">{{ yearsText }}</span>
+        </div>
+
+        <div class="fin-cell">
+          <span class="fin-label">فترة الدفع</span>
+          <span class="fin-value">{{ paymentIntervalText }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">رقم العقد</span>
+          <span class="fin-value" dir="ltr">{{ clean(g(props.salesContract, 'ContractNumber')) || '—' }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">المساحة</span>
+          <span class="fin-value">{{ areaValue ? `${areaValue} م²` : '—' }}</span>
+        </div>
+        <div class="fin-cell">
+          <span class="fin-label">سعر المتر</span>
+          <span class="fin-value">{{ meterPriceText }}</span>
+        </div>
+      </div>
+
+      <h3 class="finance-section-title pay-title">جدول المدفوعات</h3>
       <table class="pay-table">
         <thead>
           <tr>
@@ -234,23 +252,10 @@
           <tr v-for="(row, idx) in paymentRows" :key="idx">
             <td>{{ row.label }}</td>
             <td>{{ row.dueDate || '—' }}</td>
-            <td>{{ moneyText(row.amount) }}</td>
+            <td>{{ annexMoney(row.amount) }}</td>
           </tr>
         </tbody>
       </table>
-
-      <div class="signatures">
-        <div class="sig">
-          <p>الطرف الاول</p>
-          <p>المدير المفوض لشركة الخلود للاستثمارات العقارية والصناعية والزراعية محدودة المسؤولية</p>
-          <p>يمثلها المدير المفوض / اضافة لوظيفته</p>
-          <p>محمد صالح سهيل</p>
-        </div>
-        <div class="sig">
-          <p>الطرف الثاني</p>
-          <p class="v" data-var="CustomerName">{{ customerName || '................' }}</p>
-        </div>
-      </div>
     </section>
   </div>
 </template>
@@ -351,11 +356,8 @@ const yearsText = computed(() => {
 const paymentIntervalText = computed(() => {
   const m = Number(g(props.salesContract, 'PaymentIntervalMonths'))
   if (!isFinite(m) || m <= 0) return '—'
-  if (m === 1) return 'شهري'
-  if (m === 3) return 'كل 3 أشهر'
-  if (m === 6) return 'كل 6 أشهر'
-  if (m === 12) return 'سنوي'
-  return `كل ${m} أشهر`
+  if (m === 1) return '1 شهر'
+  return `${m} أشهر`
 })
 
 const meterPriceText = computed(() => {
@@ -363,16 +365,16 @@ const meterPriceText = computed(() => {
   const area = Number(g(props.unit, 'Area'))
   if (isFinite(ppm) && ppm > 0) {
     if (rate.value > 0) {
-      if (ppm < 100_000) return formatMoneyCompact(ppm) + ' $'
-      return formatMoneyCompact(ppm / rate.value) + ' $'
+      const usd = ppm < 100_000 ? ppm : ppm / rate.value
+      return annexMoney(usd)
     }
-    return moneyText(ppm)
+    return annexMoney(ppm)
   }
   if (area > 0 && sellingPrice.value > 0 && rate.value > 0) {
-    return formatMoneyCompact(sellingPrice.value / area / rate.value) + ' $'
+    return annexMoney(sellingPrice.value / area / rate.value)
   }
   if (area > 0 && sellingPrice.value > 0) {
-    return moneyText(sellingPrice.value / area)
+    return annexMoney(sellingPrice.value / area)
   }
   return '—'
 })
@@ -382,7 +384,7 @@ const paymentRows = computed(() => {
   const schedule = g(sc, 'PaymentSchedule')
   if (Array.isArray(schedule) && schedule.length > 0) {
     return schedule.map((r, i) => ({
-      label: clean(g(r, 'Name')) || `الدفعة ${Number(g(r, 'Index')) || i + 1}`,
+      label: clean(g(r, 'Name')) || `${Number(g(r, 'Index')) || i + 1} الدفعة`,
       dueDate: formatDate(g(r, 'DueDate')),
       amount: Number(g(r, 'Amount')) || 0,
     }))
@@ -438,7 +440,7 @@ const paymentRows = computed(() => {
   if (Array.isArray(installments)) {
     installments.forEach((inst, i) => {
       rows.push({
-        label: clean(g(inst, 'Name')) || `الدفعة ${i + 1}`,
+        label: clean(g(inst, 'Name')) || `${i + 1} الدفعة`,
         dueDate: formatDate(g(inst, 'DueDate')),
         amount: Number(g(inst, 'Amount')) || 0,
       })
@@ -447,6 +449,17 @@ const paymentRows = computed(() => {
 
   return rows
 })
+
+/** مبالغ ملحق الدفعات — فاصل آلاف بفاصلة كما في التصميم المرجعي */
+function annexMoney(v: unknown) {
+  const n = Number(v)
+  if (!isFinite(n)) return '—'
+  if (rate.value > 0) {
+    const usd = Math.round((n / rate.value) * 100) / 100
+    return usd.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  }
+  return Math.round(n).toLocaleString('en-US')
+}
 
 function moneyText(v: unknown) {
   const n = Number(v)
@@ -537,35 +550,98 @@ function formatMoneyCompact(v: unknown, fractionDigits = 0) {
 .plan { min-height: 140mm; display: flex; align-items: center; justify-content: center; }
 .plan :deep(img) { max-width: 100%; max-height: 150mm; }
 
-.finance-annex .pay-title { margin-top: 16pt; }
-.fin-grid,
+/* ملحق جدول التسديد — مطابق للتصميم المرجعي */
+.finance-annex {
+  text-align: right;
+}
+.finance-main-title {
+  font-size: 18pt;
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 18pt;
+  line-height: 1.4;
+}
+.finance-section-title {
+  font-size: 13pt;
+  font-weight: 700;
+  margin: 0 0 8pt;
+  text-align: right;
+}
+.finance-annex .pay-title {
+  margin-top: 18pt;
+}
+
+.fin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  width: 100%;
+  border: 1px solid #b0b0b0;
+  border-left: none;
+  border-bottom: none;
+  margin: 0 0 4pt;
+}
+.fin-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6pt;
+  min-height: 52pt;
+  padding: 6pt 8pt 10pt;
+  border-left: 1px solid #b0b0b0;
+  border-bottom: 1px solid #b0b0b0;
+  box-sizing: border-box;
+  text-align: center;
+}
+.fin-label {
+  align-self: flex-end;
+  width: 100%;
+  text-align: right;
+  font-size: 9.5pt;
+  font-weight: 400;
+  color: #222;
+  line-height: 1.3;
+}
+.fin-value {
+  font-size: 12pt;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
 .pay-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 6pt 0 12pt;
-  font-size: 11pt;
+  margin: 0;
+  font-size: 11.5pt;
   table-layout: fixed;
 }
-.fin-grid th,
-.fin-grid td,
-.pay-table th,
-.pay-table td {
-  border: 1px solid #222;
-  padding: 5pt 6pt;
+.pay-table thead th {
+  background: #111;
+  color: #fff;
+  font-weight: 700;
   text-align: center;
-  vertical-align: middle;
+  padding: 9pt 8pt;
+  border: none;
 }
-.fin-grid th,
-.pay-table th {
-  background: #f3f3f3;
-  font-weight: bold;
+.pay-table tbody td {
+  text-align: center;
+  padding: 10pt 8pt;
+  border: none;
+  border-bottom: 1px solid #cfcfcf;
+  background: transparent;
+  font-weight: 500;
+  color: #111;
 }
-.fin-grid th { width: 18%; }
-.fin-grid td { width: 32%; }
+.pay-table tbody tr:last-child td {
+  border-bottom: 1px solid #cfcfcf;
+}
 
 @media print {
   .contract { width: auto; padding: 0; margin: 0; }
   .h, .title { break-after: avoid; }
+  .finance-annex { break-inside: avoid; }
 }
 @media screen {
   .contract { box-shadow: 0 0 6px rgba(0, 0, 0, .25); margin-top: 12px; margin-bottom: 12px; }
