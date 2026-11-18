@@ -20,8 +20,8 @@
 
     <p class="b">الطرف الاول / البائع</p>
     <p class="b">المدير المفوض لشركة الخلود للاستثمارات العقارية والصناعية والزراعية محدودة المسؤؤلية اضافة لوظيفته</p>
-    <p class="b">العنوان: <span class="v">{{ sellerAddress }}</span></p>
-    <p class="b">رقم الهاتف: <span class="v">{{ sellerPhone }}</span></p>
+    <p class="b seller-spacer">&nbsp;</p>
+    <p class="b seller-spacer">&nbsp;</p>
 
     <p class="b">الطرف الثاني / المشتري</p>
     <!-- ======== متغيرات المشتري (من API) ======== -->
