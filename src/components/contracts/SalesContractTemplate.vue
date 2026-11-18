@@ -124,8 +124,9 @@
 
     <p class="b nu">المرافقات:</p>
     <p>ملاحظة:- السهو والخطأ مرجوع من الطرفين</p>
+    <p>المساحة (<span class="v" data-var="AreaValue">{{ areaValue }}</span>) م</p>
 
-    <!-- ======== التواقيع ======== -->
+    <!-- ======== التواقيع (بعد المساحة) ======== -->
     <div class="signatures">
       <div class="sig">
         <p>الطرف الاول</p>
@@ -133,33 +134,11 @@
         <p>يمثلها المدير المفوض / اضافة لوظيفته</p>
         <p>محمد صالح سهيل</p>
       </div>
-      <div class="sig">
-        <p>الطرف الثاني</p>
-        <p class="v" data-var="CustomerName">{{ customerName || '................' }}</p>
-      </div>
+      <div class="sig"><p>الطرف الثاني</p></div>
     </div>
 
-    <!-- ===================== صفحة المرفقات : المساحة ===================== -->
-    <section class="annex">
-      <p class="b">المرافقات:</p>
-      <p>المساحة (<span class="v" data-var="AreaValue">{{ areaValue }}</span>) م</p>
-
-      <!-- مكان مخطط الوحدة (اختياري): <template #plan><img :src="planUrl" /></template> -->
-      <div class="plan"><slot name="plan" /></div>
-
-      <div class="signatures">
-        <div class="sig">
-          <p>الطرف الاول</p>
-          <p>المدير المفوض لشركة الخلود للاستثمارات العقارية والصناعية والزراعية محدودة المسؤولية</p>
-          <p>يمثلها المدير المفوض / اضافة لوظيفته</p>
-          <p>محمد صالح سهيل</p>
-        </div>
-        <div class="sig">
-          <p>الطرف الثاني</p>
-          <p class="v" data-var="CustomerName">{{ customerName || '................' }}</p>
-        </div>
-      </div>
-    </section>
+    <!-- مكان مخطط الوحدة (اختياري) -->
+    <div v-if="$slots.plan" class="plan annex-plan"><slot name="plan" /></div>
 
     <!-- ===================== ملحق المالية وجدول الدفعات ===================== -->
     <section class="annex finance-annex">
@@ -256,6 +235,17 @@
           </tr>
         </tbody>
       </table>
+
+      <!-- التواقيع دائماً في نهاية جدول المدفوعات -->
+      <div class="signatures pay-signatures">
+        <div class="sig">
+          <p>الطرف الاول</p>
+          <p>المدير المفوض لشركة الخلود للاستثمارات العقارية والصناعية والزراعية محدودة المسؤولية</p>
+          <p>يمثلها المدير المفوض / اضافة لوظيفته</p>
+          <p>محمد صالح سهيل</p>
+        </div>
+        <div class="sig"><p>الطرف الثاني</p></div>
+      </div>
     </section>
   </div>
 </template>
@@ -538,7 +528,9 @@ function formatMoneyCompact(v: unknown, fractionDigits = 0) {
 /* صفحة المرفقات */
 .annex { break-before: page; page-break-before: always; }
 .plan { min-height: 140mm; display: flex; align-items: center; justify-content: center; }
+.annex-plan { break-before: page; page-break-before: always; }
 .plan :deep(img) { max-width: 100%; max-height: 150mm; }
+.pay-signatures { margin-top: 16pt; }
 
 /* ملحق جدول التسديد — مضغوط ليتسع جدول الدفعات في نفس الصفحة */
 .finance-annex {
