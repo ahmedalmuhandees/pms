@@ -834,11 +834,13 @@ export interface SalesContract {
   installments: Installment[] | null
   downPaymentInstallments?: Installment[] | null
   downPaymentSchedule?: ContractDownPaymentScheduleItem[] | null
+  paymentSchedule?: ContractInstallmentScheduleItem[] | null
   contractStatus: ContractStatus
   customerId: string
   unitId: string
   salesAgentId: string
   complexId: string
+  contractDesign?: ContractDesign | null
   createdAt: string
   updatedAt?: string
 }
