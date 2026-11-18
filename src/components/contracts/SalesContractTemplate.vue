@@ -255,36 +255,54 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps({
-  /** Customer: FirstName, LastName, NationalID, BirthDate, Address, Occupation, Phone */
-  customer: { type: Object, default: () => ({}) },
-  /** Unit: UnitNumber, Area */
-  unit: { type: Object, default: () => ({}) },
-  /** SalesContract: SellingPrice, ExchangeRateUsd, installments, ... */
-  salesContract: { type: Object, default: () => ({}) },
-  sellerAddress: { type: String, default: '' },
-  sellerPhone: { type: String, default: '' },
-  /** تسميات البيانات المالية */
-  contractTypeLabel: { type: String, default: '—' },
-  paymentTypeLabel: { type: String, default: '—' },
-  contractStatusLabel: { type: String, default: '—' },
-  salesAgentName: { type: String, default: '—' },
-  /** سعر المتر من تصميم العقد (اختياري) */
-  pricePerMeter: { type: Number, default: null },
-  /** تلوين أماكن المتغيرات للمعاينة فقط */
-  highlightVars: { type: Boolean, default: false },
-})
+type AnyRecord = Record<string, unknown>
+
+const props = withDefaults(
+  defineProps<{
+    /** Customer: FirstName, LastName, NationalID, BirthDate, Address, Occupation, Phone */
+    customer?: AnyRecord | null
+    /** Unit: UnitNumber, Area */
+    unit?: AnyRecord | null
+    /** SalesContract: SellingPrice, ExchangeRateUsd, installments, ... */
+    salesContract?: AnyRecord | null
+    sellerAddress?: string
+    sellerPhone?: string
+    /** تسميات البيانات المالية */
+    contractTypeLabel?: string
+    paymentTypeLabel?: string
+    contractStatusLabel?: string
+    salesAgentName?: string
+    /** سعر المتر من تصميم العقد (اختياري) */
+    pricePerMeter?: number | null
+    /** تلوين أماكن المتغيرات للمعاينة فقط */
+    highlightVars?: boolean
+  }>(),
+  {
+    customer: () => ({}),
+    unit: () => ({}),
+    salesContract: () => ({}),
+    sellerAddress: '',
+    sellerPhone: '',
+    contractTypeLabel: '—',
+    paymentTypeLabel: '—',
+    contractStatusLabel: '—',
+    salesAgentName: '—',
+    pricePerMeter: null,
+    highlightVars: false,
+  },
+)
 
 /* يقبل camelCase أو PascalCase القادم من الـ API */
-const g = (obj, name) => {
-  if (!obj) return undefined
+const g = (obj: unknown, name: string): unknown => {
+  if (!obj || typeof obj !== 'object') return undefined
+  const record = obj as AnyRecord
   const camel = name.charAt(0).toLowerCase() + name.slice(1)
-  return obj[name] ?? obj[camel] ?? (name === 'NationalID' ? obj.nationalId : undefined)
+  return record[name] ?? record[camel] ?? (name === 'NationalID' ? record.nationalId : undefined)
 }
-const clean = (v) => (v === null || v === undefined ? '' : String(v).trim())
+const clean = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim())
 
 /* ---------- المشتري ---------- */
 const customerName = computed(() =>
@@ -430,7 +448,7 @@ const paymentRows = computed(() => {
   return rows
 })
 
-function moneyText(v) {
+function moneyText(v: unknown) {
   const n = Number(v)
   if (!isFinite(n)) return '—'
   if (rate.value > 0) {
@@ -440,23 +458,23 @@ function moneyText(v) {
   return formatMoneyCompact(n, 0) + ' د.ع'
 }
 
-function formatDate(value) {
+function formatDate(value: unknown) {
   if (!value) return ''
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value))
   if (m) return `${m[1]}/${m[2]}/${m[3]}`
-  const d = new Date(value)
-  if (isNaN(d)) return ''
-  const p = (n) => String(n).padStart(2, '0')
+  const d = new Date(String(value))
+  if (isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())}`
 }
 
-function formatAreaNumber(v) {
+function formatAreaNumber(v: unknown) {
   const n = Number(v)
   if (!isFinite(n) || v === null || v === '') return ''
   return String(Math.round(n * 100) / 100)
 }
 
-function formatMoneyCompact(v, fractionDigits = 0) {
+function formatMoneyCompact(v: unknown, fractionDigits = 0) {
   const n = Number(v)
   if (!isFinite(n)) return ''
   const fixed =
