@@ -29,6 +29,8 @@ import { getErrorMessage } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
 import { asSelectOptions, formatDate, formatMoney } from '@/utils/enums'
+import { resolveMediaUrl } from '@/utils/media'
+import { openReceiptPrintWindow, wrapDualA5ReceiptDocument } from '@/utils/receiptPrintLayout'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import TableSortCaption from '@/components/TableSortCaption.vue'
@@ -349,11 +351,14 @@ async function save() {
   saving.value = true
   try {
     const payload = buildPayload()
-    if (editingId.value) await updateDeposit(editingId.value, payload)
-    else await createDeposit(payload)
-    notify.success(editingId.value ? 'تم تحديث العربون' : 'تم إضافة العربون')
+    const isNew = !editingId.value
+    const saved = isNew
+      ? await createDeposit(payload)
+      : await updateDeposit(editingId.value!, payload)
+    notify.success(isNew ? 'تم إضافة العربون' : 'تم تحديث العربون')
     dialogVisible.value = false
     await load()
+    if (isNew) printDepositReceipt(saved)
   } catch (error) {
     notify.error(getErrorMessage(error))
   } finally {
@@ -369,6 +374,165 @@ async function remove(row: Deposit) {
     await load()
   } catch (error) {
     notify.error(getErrorMessage(error))
+  }
+}
+
+function complexOf(id: string) {
+  return complexes.value.find((c) => c.id === id)
+}
+
+function isSamaComplex(c?: Complex | null) {
+  if (!c) return false
+  const ar = (c.nameAr || '').toLowerCase()
+  const en = (c.name || '').toLowerCase()
+  const slug = (c.portalSlug || '').toLowerCase()
+  return ar.includes('سما') || en.includes('sama') || slug.includes('sama')
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+}
+
+function formatPrintDate(value?: string | null) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy}`
+}
+
+function numberToArabicWords(n: number): string {
+  const num = Math.round(Math.abs(n || 0))
+  if (num === 0) return 'صفر دينار'
+  const ones = [
+    '', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة',
+    'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر',
+  ]
+  const tens = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون']
+  const hundreds = ['', 'مائة', 'مائتان', 'ثلاثمائة', 'أربعمائة', 'خمسمائة', 'ستمائة', 'سبعمائة', 'ثمانمائة', 'تسعمائة']
+
+  function underThousand(v: number): string {
+    if (v === 0) return ''
+    if (v < 20) return ones[v]
+    if (v < 100) {
+      const t = Math.floor(v / 10)
+      const o = v % 10
+      return o ? `${ones[o]} و${tens[t]}` : tens[t]
+    }
+    const h = Math.floor(v / 100)
+    const rest = v % 100
+    return rest ? `${hundreds[h]} و${underThousand(rest)}` : hundreds[h]
+  }
+
+  const parts: string[] = []
+  const millions = Math.floor(num / 1_000_000)
+  const thousands = Math.floor((num % 1_000_000) / 1000)
+  const rem = num % 1000
+
+  if (millions) {
+    if (millions === 1) parts.push('مليون')
+    else if (millions === 2) parts.push('مليونان')
+    else if (millions >= 3 && millions <= 10) parts.push(`${underThousand(millions)} ملايين`)
+    else parts.push(`${underThousand(millions)} مليون`)
+  }
+  if (thousands) {
+    if (thousands === 1) parts.push('ألف')
+    else if (thousands === 2) parts.push('ألفان')
+    else if (thousands >= 3 && thousands <= 10) parts.push(`${underThousand(thousands)} آلاف`)
+    else parts.push(`${underThousand(thousands)} ألف`)
+  }
+  if (rem) parts.push(underThousand(rem))
+
+  return `${parts.join(' و')} دينار`
+}
+
+function printDepositReceipt(row: Deposit) {
+  const complex = complexOf(row.complexId)
+  const logoUrl = isSamaComplex(complex)
+    ? '/brands/samalogo.png'
+    : complex?.logoUrl
+      ? resolveMediaUrl(complex.logoUrl)
+      : ''
+  const brandTitle = isSamaComplex(complex)
+    ? 'أبراج سما'
+    : (complex?.nameAr || complex?.name || row.complexName || 'المجمع')
+  const address =
+    [complex?.address, complex?.city].filter(Boolean).join(' - ')
+    || 'بغداد - حي الجهاد الاطباء - سريع مطار بغداد الدولي'
+  const phones = '+(964) 77 5000 9181 - 78 5000 9181'
+  const dateStr = formatPrintDate(row.depositDate)
+  const receiptNo = row.receiptNumber || '—'
+  const amountStr = `${formatMoney(row.amount)}IQD`
+  const words = numberToArabicWords(row.amount)
+  const phone = row.customerPhone?.trim() || '/'
+  const unit = row.unitNumber?.trim() || '—'
+  const desc = `عربون للوحدة رقم ${unit}`
+  const warn = 'يرجى جلب هذا الوصل عند استلام العقد'
+
+  const sheetInner = `
+    <div class="brand-header">
+      <div class="brand-title">${escapeHtml(brandTitle)}</div>
+      <div class="brand-logo">
+        ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="logo"/>` : ''}
+      </div>
+    </div>
+    <hr class="rule"/>
+    <div class="title-row"><h1>وصل استلام عربون</h1></div>
+    <div class="meta">
+      <div><strong>تاريخ :</strong> ${escapeHtml(dateStr)}</div>
+      <div><strong>رقم :</strong> ${escapeHtml(receiptNo)}</div>
+    </div>
+    <div class="field">
+      <span class="label">استلمت من السيد/ة :</span>
+      <span class="line">${escapeHtml(row.customerName || '—')}</span>
+    </div>
+    <div class="field">
+      <span class="label">رقم الموبايل :</span>
+      <span class="line">${escapeHtml(phone)}</span>
+    </div>
+    <div class="amount-row">
+      <span class="label">مبلغا و قدره :</span>
+      <span class="amount-box">${escapeHtml(amountStr)}</span>
+      <span class="amount-words">${escapeHtml(words)}</span>
+    </div>
+    <div class="field">
+      <span class="label">و ذلك عن :</span>
+      <span class="line">${escapeHtml(desc)}</span>
+    </div>
+    ${row.unitPrice != null ? `<div class="field"><span class="label">سعر الوحدة :</span><span class="line">${escapeHtml(formatMoney(row.unitPrice))} IQD</span></div>` : ''}
+    <div class="field">
+      <span class="label">مستشار العقاري :</span>
+      <span class="line">${escapeHtml(row.consultantName || '—')}</span>
+    </div>
+    <div class="warn">${escapeHtml(warn)}</div>
+    <div class="signs">
+      <div class="sign">
+        <div class="role">زبون</div>
+        <div class="name">${escapeHtml(row.customerName || '—')}</div>
+      </div>
+      <div class="sign">
+        <div class="role">محاسب</div>
+      </div>
+    </div>
+    <hr class="rule"/>
+    <div class="footer">
+      <div class="addr">${escapeHtml(address)}</div>
+      <div class="tel">${escapeHtml(phones)}</div>
+    </div>
+    <div class="sheet-bottom"></div>`
+
+  const html = wrapDualA5ReceiptDocument({
+    title: `وصل عربون — ${escapeHtml(receiptNo)}`,
+    sheetInnerHtml: sheetInner,
+  })
+  if (!openReceiptPrintWindow(html)) {
+    notify.warning('اسمح بالنوافذ المنبثقة لطباعة الوصل')
   }
 }
 
@@ -454,9 +618,14 @@ onMounted(async () => {
               {{ data.reservationId ? 'من حجز' : 'يدوي' }}
             </template>
           </Column>
-          <Column header="" style="width: 120px">
+          <Column header="" style="width: 150px">
             <template #body="{ data }">
-              <RowActions @edit="openEdit(data)" @delete="remove(data)" />
+              <RowActions
+                show-print
+                @print="printDepositReceipt(data)"
+                @edit="openEdit(data)"
+                @remove="remove(data)"
+              />
             </template>
           </Column>
           <template #empty>
@@ -639,7 +808,11 @@ onMounted(async () => {
       <template #footer>
         <div class="dialog-actions">
           <Button label="إلغاء" severity="secondary" outlined @click="dialogVisible = false" />
-          <Button label="حفظ" :loading="saving" @click="save" />
+          <Button
+            :label="editingId ? 'حفظ التغييرات' : 'حفظ وطباعة الوصل'"
+            :loading="saving"
+            @click="save"
+          />
         </div>
       </template>
     </Dialog>
