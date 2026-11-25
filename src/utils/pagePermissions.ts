@@ -27,6 +27,7 @@ export type PageKey =
   | 'contract-designs'
   | 'installments'
   | 'reservations'
+  | 'deposits'
   | 'receipts'
   | 'sales-commissions'
   | 'service-settings'
@@ -123,6 +124,7 @@ export const PAGE_PERMISSION_GROUPS: PagePermissionGroup[] = [
       { key: 'contract-designs', label: 'تصاميم العقود', path: '/contract-designs' },
       { key: 'installments', label: 'الأقساط', path: '/installments' },
       { key: 'reservations', label: 'الحجوزات', path: '/reservations' },
+      { key: 'deposits', label: 'العربون', path: '/deposits' },
       { key: 'receipts', label: 'الوصولات', path: '/receipts' },
       { key: 'sales-commissions', label: 'نسبة المبيعات', path: '/sales-commissions' },
     ],

@@ -253,7 +253,16 @@ const allMenuGroups: MenuGroup[] = [
       { path: '/contract-clauses', label: 'بنود العقد', icon: 'pi pi-align-left', pageKey: 'contract-clauses' },
       { path: '/contract-designs', label: 'تصاميم العقود', icon: 'pi pi-palette', pageKey: 'contract-designs' },
       { path: '/installments', label: 'الأقساط', icon: 'pi pi-list', pageKey: 'installments' },
-      { path: '/reservations', label: 'الحجوزات', icon: 'pi pi-bookmark', pageKey: 'reservations' },
+      {
+        kind: 'submenu',
+        key: 'reservations-group',
+        label: 'الحجوزات',
+        icon: 'pi pi-bookmark',
+        children: [
+          { path: '/reservations', label: 'الحجوزات', icon: 'pi pi-bookmark', pageKey: 'reservations' },
+          { path: '/deposits', label: 'العربون', icon: 'pi pi-wallet', pageKey: 'deposits' },
+        ],
+      },
       { path: '/receipts', label: 'الوصولات', icon: 'pi pi-money-bill', pageKey: 'receipts' },
       { path: '/sales-commissions', label: 'نسبة المبيعات', icon: 'pi pi-percentage', pageKey: 'sales-commissions' },
     ],

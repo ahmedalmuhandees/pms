@@ -380,6 +380,12 @@ const appRoutes: RouteRecordRaw[] = [
           meta: { pageKey: 'reservations' },
         },
         {
+          path: 'deposits',
+          name: 'deposits',
+          component: () => import('@/views/DepositsView.vue'),
+          meta: { pageKey: 'deposits' },
+        },
+        {
           path: 'sales-contracts',
           name: 'sales-contracts',
           component: () => import('@/views/SalesContractsView.vue'),
