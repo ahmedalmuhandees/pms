@@ -1,1 +1,0 @@
-import{$ as e}from"./basecomponent-DNH_nlcm.js";var t=e();export{t};

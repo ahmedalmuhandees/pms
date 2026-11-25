@@ -10,6 +10,7 @@ import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type { Complex, Customer, Unit } from '@/types'
+import { UnitStatus } from '@/types'
 import {
   createDeposit,
   deleteDeposit,
@@ -66,6 +67,8 @@ const form = reactive({
   unitId: null as string | null,
   unitNumber: '' as string,
   unitPrice: null as number | null,
+  pricePerMeter: null as number | null,
+  reservationPercent: null as number | null,
   reservationAmount: null as number | null,
   reservationDate: null as string | null,
   reservationExpireDate: null as string | null,
@@ -93,9 +96,14 @@ const customerOptions = computed(() =>
   ),
 )
 
-const filteredUnits = computed(() =>
-  form.complexId ? units.value.filter((u) => u.complexId === form.complexId) : units.value,
-)
+const filteredUnits = computed(() => {
+  const inComplex = form.complexId
+    ? units.value.filter((u) => u.complexId === form.complexId)
+    : units.value
+  return inComplex.filter(
+    (u) => u.status === UnitStatus.Available || u.id === form.unitId,
+  )
+})
 
 const unitOptions = computed(() =>
   asSelectOptions(filteredUnits.value, (u) =>
@@ -189,6 +197,8 @@ function clearReservationFields(clearCustomerName: boolean) {
   form.unitId = null
   form.unitNumber = ''
   form.unitPrice = null
+  form.pricePerMeter = null
+  form.reservationPercent = null
   form.reservationAmount = null
   form.reservationDate = null
   form.reservationExpireDate = null
@@ -206,11 +216,22 @@ function applyReservation(reservation: DepositReservationLookup) {
   form.unitId = reservation.unitId
   form.unitNumber = reservation.unitNumber || ''
   form.unitPrice = reservation.unitPrice ?? null
+  form.pricePerMeter = reservation.pricePerMeter ?? null
+  form.reservationPercent = reservation.reservationPercent ?? null
   form.reservationAmount = reservation.reservationAmount
   form.reservationDate = reservation.reservationDate
   form.reservationExpireDate = reservation.expireDate
   form.consultantName = reservation.consultantName || form.consultantName
   if (!form.notes && reservation.notes) form.notes = reservation.notes
+}
+
+function syncReservationAmountFromPercent() {
+  if (hasLinkedReservation.value) return
+  const price = Number(form.unitPrice || 0)
+  const percent = Number(form.reservationPercent || 0)
+  if (price > 0 && percent > 0) {
+    form.reservationAmount = Math.round((price * percent) / 100)
+  }
 }
 
 async function loadLookups() {
@@ -237,6 +258,8 @@ function openCreate() {
     unitId: null,
     unitNumber: '',
     unitPrice: null,
+    pricePerMeter: null,
+    reservationPercent: null,
     reservationAmount: null,
     reservationDate: null,
     reservationExpireDate: null,
@@ -260,6 +283,8 @@ async function openEdit(row: Deposit) {
     unitId: row.unitId || null,
     unitNumber: row.unitNumber || '',
     unitPrice: row.unitPrice ?? null,
+    pricePerMeter: row.pricePerMeter ?? null,
+    reservationPercent: row.reservationPercent ?? null,
     reservationAmount: row.reservationAmount ?? null,
     reservationDate: row.reservationDate || null,
     reservationExpireDate: row.reservationExpireDate || null,
@@ -298,6 +323,8 @@ function buildPayload(): CreateDepositPayload {
     unitId: form.unitId || null,
     unitNumber: form.unitNumber || null,
     unitPrice: form.unitPrice,
+    pricePerMeter: form.pricePerMeter,
+    reservationPercent: form.reservationPercent,
     reservationAmount: form.reservationAmount,
     reservationDate: form.reservationDate,
     reservationExpireDate: form.reservationExpireDate,
@@ -525,13 +552,14 @@ onMounted(async () => {
             :options="unitOptions"
             option-label="label"
             option-value="id"
-            placeholder="اختر الوحدة (اختياري)"
+            placeholder="وحدات متاحة فقط"
             show-clear
             filter
             checkmark
             append-to="body"
           />
           <InputText v-else :model-value="form.unitNumber || '—'" disabled />
+          <small v-if="isManualEntry" class="field-hint">تظهر الوحدات المتاحة فقط</small>
         </div>
 
         <div class="field">
@@ -541,7 +569,30 @@ onMounted(async () => {
 
         <div class="field">
           <label>سعر الوحدة</label>
-          <InputNumber v-model="form.unitPrice" :min="0" :disabled="hasLinkedReservation" />
+          <InputNumber
+            v-model="form.unitPrice"
+            :min="0"
+            :disabled="hasLinkedReservation"
+            @update:model-value="syncReservationAmountFromPercent"
+          />
+        </div>
+
+        <div class="field">
+          <label>سعر المتر</label>
+          <InputNumber v-model="form.pricePerMeter" :min="0" :disabled="hasLinkedReservation" />
+        </div>
+
+        <div class="field">
+          <label>نسبة الحجز ٪</label>
+          <InputNumber
+            v-model="form.reservationPercent"
+            :min="0"
+            :max="100"
+            :min-fraction-digits="0"
+            :max-fraction-digits="2"
+            :disabled="hasLinkedReservation"
+            @update:model-value="syncReservationAmountFromPercent"
+          />
         </div>
 
         <div class="field">

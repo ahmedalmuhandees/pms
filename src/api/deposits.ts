@@ -13,6 +13,8 @@ export interface Deposit {
   unitId?: string | null
   unitNumber?: string | null
   unitPrice?: number | null
+  pricePerMeter?: number | null
+  reservationPercent?: number | null
   reservationAmount?: number | null
   reservationDate?: string | null
   reservationExpireDate?: string | null
@@ -29,6 +31,8 @@ export interface DepositReservationLookup {
   expireDate: string
   reservationAmount: number
   unitPrice?: number | null
+  pricePerMeter?: number | null
+  reservationPercent?: number | null
   unitNumber?: string | null
   unitId: string
   customerId: string
@@ -59,6 +63,8 @@ export interface CreateDepositPayload {
   unitId?: string | null
   unitNumber?: string | null
   unitPrice?: number | null
+  pricePerMeter?: number | null
+  reservationPercent?: number | null
   reservationAmount?: number | null
   reservationDate?: string | null
   reservationExpireDate?: string | null
