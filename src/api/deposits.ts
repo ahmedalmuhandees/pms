@@ -20,6 +20,8 @@ export interface Deposit {
   reservationExpireDate?: string | null
   consultantName?: string | null
   notes?: string | null
+  transferStatus: number
+  transferredAt?: string | null
   complexId: string
   complexName?: string | null
   createdAt: string
@@ -48,6 +50,7 @@ export interface DepositParams extends PaginationParams {
   ComplexId?: string
   CustomerId?: string
   ReservationId?: string
+  TransferStatus?: number
   DateFrom?: string
   DateTo?: string
 }
@@ -102,5 +105,13 @@ export async function updateDeposit(id: string, payload: CreateDepositPayload) {
 
 export async function deleteDeposit(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/Deposits/${id}`)
+  return unwrap(res)
+}
+
+export async function updateDepositTransferStatus(id: string, transferStatus: number) {
+  const res = await apiClient.patch<ApiResponse<Deposit>>(
+    `/api/Deposits/${id}/transfer-status`,
+    { transferStatus },
+  )
   return unwrap(res)
 }

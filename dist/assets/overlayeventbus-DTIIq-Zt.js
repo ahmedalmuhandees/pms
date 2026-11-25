@@ -1,0 +1,1 @@
+import{$ as e}from"./basecomponent-Br604F9R.js";var t=e();export{t};

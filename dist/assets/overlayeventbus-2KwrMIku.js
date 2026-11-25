@@ -1,1 +1,0 @@
-import{$ as e}from"./basecomponent-Bk1xDXWT.js";var t=e();export{t};

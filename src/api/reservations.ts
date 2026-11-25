@@ -13,6 +13,7 @@ export interface ReservationParams extends PaginationParams {
   CustomerId?: string
   UnitId?: string
   Status?: string | number
+  TransferStatus?: number
   ExpireFrom?: string
   ExpireTo?: string
 }
@@ -39,5 +40,13 @@ export async function updateReservation(id: string, payload: UpdateReservationDt
 
 export async function deleteReservation(id: string) {
   const res = await apiClient.delete<ApiResponse<boolean>>(`/api/Reservations/${id}`)
+  return unwrap(res)
+}
+
+export async function updateReservationTransferStatus(id: string, transferStatus: number) {
+  const res = await apiClient.patch<ApiResponse<Reservation>>(
+    `/api/Reservations/${id}/transfer-status`,
+    { transferStatus },
+  )
   return unwrap(res)
 }

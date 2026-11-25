@@ -691,6 +691,24 @@ export const ReservationStatus = {
 } as const
 export type ReservationStatus = (typeof ReservationStatus)[keyof typeof ReservationStatus]
 
+export const PurchaseFormPaymentMethod = {
+  Cash: 1,
+  HalfCash: 2,
+  Installments: 3,
+} as const
+export type PurchaseFormPaymentMethod =
+  (typeof PurchaseFormPaymentMethod)[keyof typeof PurchaseFormPaymentMethod]
+
+export const TransferStatus = {
+  NotTransferred: 1,
+  TransferredToContract: 2,
+} as const
+export type TransferStatus = (typeof TransferStatus)[keyof typeof TransferStatus]
+
+/** @deprecated استخدم TransferStatus */
+export const PurchaseFormTransferStatus = TransferStatus
+export type PurchaseFormTransferStatus = TransferStatus
+
 export const SalesCommissionSource = {
   Contract: 1,
   Reservation: 2,
@@ -801,6 +819,8 @@ export interface Reservation {
   reservationAmount: number
   expireDate: string
   status: ReservationStatus
+  transferStatus: TransferStatus
+  transferredAt?: string | null
   unitId: string
   customerId: string
   complexId: string

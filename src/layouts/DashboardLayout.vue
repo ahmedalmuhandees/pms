@@ -265,6 +265,7 @@ const allMenuGroups: MenuGroup[] = [
       },
       { path: '/receipts', label: 'الوصولات', icon: 'pi pi-money-bill', pageKey: 'receipts' },
       { path: '/sales-commissions', label: 'نسبة المبيعات', icon: 'pi pi-percentage', pageKey: 'sales-commissions' },
+      { path: '/purchase-form', label: 'استمارة شراء', icon: 'pi pi-file-edit', pageKey: 'purchase-form' },
     ],
   },
   {

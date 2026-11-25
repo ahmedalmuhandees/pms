@@ -1,0 +1,1 @@
+import{s as e,t}from"./client-eSmV7jUP.js";async function n(n){return e(await t.get(`/api/ServiceTypes`,{params:n}))}async function r(n){return e(await t.post(`/api/ServiceTypes`,n))}async function i(n,r){return e(await t.put(`/api/ServiceTypes/${n}`,r))}async function a(n){return e(await t.delete(`/api/ServiceTypes/${n}`))}export{i,a as n,n as r,r as t};

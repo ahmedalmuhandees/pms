@@ -1,0 +1,1 @@
+import{s as e,t}from"./client-eSmV7jUP.js";async function n(n){return e(await t.get(`/api/PricePlans`,{params:n}))}async function r(n){return e(await t.post(`/api/PricePlans`,n))}async function i(n,r){return e(await t.put(`/api/PricePlans/${n}`,r))}async function a(n){return e(await t.delete(`/api/PricePlans/${n}`))}export{i,a as n,n as r,r as t};

@@ -30,6 +30,7 @@ export type PageKey =
   | 'deposits'
   | 'receipts'
   | 'sales-commissions'
+  | 'purchase-form'
   | 'service-settings'
   | 'monthly-services'
   | 'monthly-invoices'
@@ -127,6 +128,7 @@ export const PAGE_PERMISSION_GROUPS: PagePermissionGroup[] = [
       { key: 'deposits', label: 'العربون', path: '/deposits' },
       { key: 'receipts', label: 'الوصولات', path: '/receipts' },
       { key: 'sales-commissions', label: 'نسبة المبيعات', path: '/sales-commissions' },
+      { key: 'purchase-form', label: 'استمارة شراء', path: '/purchase-form' },
     ],
   },
   {

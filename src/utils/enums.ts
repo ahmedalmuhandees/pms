@@ -9,6 +9,8 @@ import {
   FamilyRelation,
   MaintenanceCategory,
   ReservationStatus,
+  PurchaseFormPaymentMethod,
+  TransferStatus,
   ContractStatus,
   ContractType,
   ContractPaymentType,
@@ -168,6 +170,20 @@ export const reservationStatusOptions = [
   { value: ReservationStatus.Expired, label: 'منتهي' },
   { value: ReservationStatus.Converted, label: 'محوّل لعقد' },
 ]
+
+export const purchaseFormPaymentMethodOptions = [
+  { value: PurchaseFormPaymentMethod.Cash, label: 'نقد' },
+  { value: PurchaseFormPaymentMethod.HalfCash, label: 'نصف نقد' },
+  { value: PurchaseFormPaymentMethod.Installments, label: 'اقساط' },
+]
+
+export const transferStatusOptions = [
+  { value: TransferStatus.NotTransferred, label: 'غير مرحل' },
+  { value: TransferStatus.TransferredToContract, label: 'ترحيل الى العقد' },
+]
+
+/** @deprecated استخدم transferStatusOptions */
+export const purchaseFormTransferStatusOptions = transferStatusOptions
 
 export const salesCommissionSourceOptions = [
   { value: 1, label: 'من العقود' },

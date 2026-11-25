@@ -11,12 +11,13 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import type { Complex, CreateReservationDto, Customer, Reservation, Unit } from '@/types'
-import { ReservationStatus } from '@/types'
+import { ReservationStatus, TransferStatus } from '@/types'
 import {
   createReservation,
   deleteReservation,
   getReservations,
   updateReservation,
+  updateReservationTransferStatus,
   type ReservationParams,
 } from '@/api/reservations'
 import { getComplexes } from '@/api/complexes'
@@ -31,6 +32,7 @@ import {
   formatMoney,
   labelOf,
   reservationStatusOptions,
+  transferStatusOptions,
 } from '@/utils/enums'
 import { resolveMediaUrl } from '@/utils/media'
 import { openReceiptPrintWindow, wrapDualA5ReceiptDocument } from '@/utils/receiptPrintLayout'
@@ -61,8 +63,15 @@ const saving = ref(false)
 const editingId = ref<string | null>(null)
 const complexFilter = ref<string | null>(auth.scopedComplexId)
 const statusFilter = ref<number | null>(null)
+const transferStatusFilter = ref<number | null>(null)
+const statusUpdatingId = ref<string | null>(null)
 const reservationDateModel = ref<Date | null>(null)
 const expireDateModel = ref<Date | null>(null)
+
+const transferStatusFilterOptions = [
+  { id: null as number | null, label: 'كل حالات الترحيل' },
+  ...transferStatusOptions.map((o) => ({ id: o.value, label: o.label })),
+]
 
 const emptyForm = (): CreateReservationDto => ({
   reservationDate: new Date().toISOString(),
@@ -288,6 +297,28 @@ async function cancelReservation(row: Reservation) {
   }
 }
 
+async function setTransferStatus(row: Reservation, status: number) {
+  if (row.transferStatus === status) return
+  statusUpdatingId.value = row.id
+  try {
+    await updateReservationTransferStatus(row.id, status)
+    notify.success(
+      status === TransferStatus.TransferredToContract
+        ? 'تم ترحيل الحجز الى العقد'
+        : 'تم تعيين الحالة: غير مرحل',
+    )
+    await load()
+  } catch (error) {
+    notify.error(getErrorMessage(error))
+  } finally {
+    statusUpdatingId.value = null
+  }
+}
+
+function transferSeverity(status: number) {
+  return status === TransferStatus.TransferredToContract ? 'success' : 'warn'
+}
+
 async function remove(row: Reservation) {
   if (!(await ask('حذف الحجز؟'))) return
   try {
@@ -434,9 +465,19 @@ onMounted(async () => {
             :options="reservationStatusOptions"
             option-label="label"
             option-value="value"
-            placeholder="كل الحالات"
+            placeholder="حالة الحجز"
             show-clear
             @update:model-value="(v: number | null) => setFilter('Status', v ?? undefined)"
+          />
+          <Select
+            v-model="transferStatusFilter"
+            :options="transferStatusFilterOptions"
+            option-label="label"
+            option-value="id"
+            placeholder="حالة الترحيل"
+            show-clear
+            append-to="body"
+            @update:model-value="(v: number | null) => setFilter('TransferStatus', v ?? undefined)"
           />
         </template>
       </FilterBar>
@@ -479,6 +520,14 @@ onMounted(async () => {
               />
             </template>
           </Column>
+          <Column header="حالة الترحيل" style="width: 130px">
+            <template #body="{ data }">
+              <Tag
+                :value="labelOf(transferStatusOptions, data.transferStatus ?? TransferStatus.NotTransferred)"
+                :severity="transferSeverity(data.transferStatus ?? TransferStatus.NotTransferred)"
+              />
+            </template>
+          </Column>
           <Column header="العميل" sortable>
             <template #body="{ data }">{{ customerNameOf(data) }}</template>
           </Column>
@@ -491,9 +540,31 @@ onMounted(async () => {
           <Column header="المجمع" sortable>
             <template #body="{ data }">{{ complexMap[data.complexId] || '—' }}</template>
           </Column>
-          <Column header="إجراءات" style="width: 220px">
+          <Column header="إجراءات" style="width: 280px">
             <template #body="{ data }">
               <div class="row-actions-wrap">
+                <Button
+                  v-if="(data.transferStatus ?? TransferStatus.NotTransferred) !== TransferStatus.TransferredToContract"
+                  icon="pi pi-arrow-right"
+                  size="small"
+                  text
+                  rounded
+                  severity="success"
+                  :loading="statusUpdatingId === data.id"
+                  v-tooltip.top="'ترحيل الحجز'"
+                  @click="setTransferStatus(data, TransferStatus.TransferredToContract)"
+                />
+                <Button
+                  v-if="(data.transferStatus ?? TransferStatus.NotTransferred) !== TransferStatus.NotTransferred"
+                  icon="pi pi-replay"
+                  size="small"
+                  text
+                  rounded
+                  severity="warn"
+                  :loading="statusUpdatingId === data.id"
+                  v-tooltip.top="'غير مرحل'"
+                  @click="setTransferStatus(data, TransferStatus.NotTransferred)"
+                />
                 <Button
                   v-if="data.status !== ReservationStatus.Confirmed && data.status !== ReservationStatus.Cancelled"
                   icon="pi pi-check"

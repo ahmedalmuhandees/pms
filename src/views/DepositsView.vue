@@ -9,14 +9,16 @@ import Textarea from 'primevue/textarea'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Tag from 'primevue/tag'
 import type { Complex, Customer, Unit } from '@/types'
-import { UnitStatus } from '@/types'
+import { TransferStatus, UnitStatus } from '@/types'
 import {
   createDeposit,
   deleteDeposit,
   getDeposits,
   lookupDepositCustomerReservations,
   updateDeposit,
+  updateDepositTransferStatus,
   type CreateDepositPayload,
   type Deposit,
   type DepositParams,
@@ -28,7 +30,7 @@ import { getUnits } from '@/api/units'
 import { getErrorMessage } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
-import { asSelectOptions, formatDate, formatMoney } from '@/utils/enums'
+import { asSelectOptions, formatDate, formatMoney, labelOf, transferStatusOptions } from '@/utils/enums'
 import { resolveMediaUrl } from '@/utils/media'
 import { openReceiptPrintWindow, wrapDualA5ReceiptDocument } from '@/utils/receiptPrintLayout'
 import PageHeader from '@/components/PageHeader.vue'
@@ -46,9 +48,16 @@ const complexes = ref<Complex[]>([])
 const customers = ref<Customer[]>([])
 const units = ref<Unit[]>([])
 const complexFilter = ref<string | null>(auth.scopedComplexId)
+const transferStatusFilter = ref<number | null>(null)
+const statusUpdatingId = ref<string | null>(null)
 const customerReservations = ref<DepositReservationLookup[]>([])
 const loadingReservations = ref(false)
 const suppressCustomerWatch = ref(false)
+
+const transferStatusFilterOptions = [
+  { id: null as number | null, label: 'كل حالات الترحيل' },
+  ...transferStatusOptions.map((o) => ({ id: o.value, label: o.label })),
+]
 
 const {
   items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
@@ -128,6 +137,10 @@ const reservationOptions = computed(() =>
 
 watch(complexFilter, (id) => {
   setFilter('ComplexId', id || undefined)
+})
+
+watch(transferStatusFilter, (status) => {
+  setFilter('TransferStatus', status ?? undefined)
 })
 
 watch(
@@ -377,6 +390,28 @@ async function remove(row: Deposit) {
   }
 }
 
+async function setTransferStatus(row: Deposit, status: number) {
+  if (row.transferStatus === status) return
+  statusUpdatingId.value = row.id
+  try {
+    await updateDepositTransferStatus(row.id, status)
+    notify.success(
+      status === TransferStatus.TransferredToContract
+        ? 'تم ترحيل العربون الى العقد'
+        : 'تم تعيين الحالة: غير مرحل',
+    )
+    await load()
+  } catch (error) {
+    notify.error(getErrorMessage(error))
+  } finally {
+    statusUpdatingId.value = null
+  }
+}
+
+function transferSeverity(status: number) {
+  return status === TransferStatus.TransferredToContract ? 'success' : 'warn'
+}
+
 function complexOf(id: string) {
   return complexes.value.find((c) => c.id === id)
 }
@@ -576,6 +611,15 @@ onMounted(async () => {
           show-clear
           append-to="body"
         />
+        <Select
+          v-model="transferStatusFilter"
+          :options="transferStatusFilterOptions"
+          option-label="label"
+          option-value="id"
+          placeholder="حالة الترحيل"
+          show-clear
+          append-to="body"
+        />
       </FilterBar>
 
       <TableSkeleton v-if="loading && !items.length" />
@@ -618,14 +662,46 @@ onMounted(async () => {
               {{ data.reservationId ? 'من حجز' : 'يدوي' }}
             </template>
           </Column>
-          <Column header="" style="width: 150px">
+          <Column header="حالة الترحيل" style="width: 130px">
             <template #body="{ data }">
-              <RowActions
-                show-print
-                @print="printDepositReceipt(data)"
-                @edit="openEdit(data)"
-                @remove="remove(data)"
+              <Tag
+                :value="labelOf(transferStatusOptions, data.transferStatus ?? TransferStatus.NotTransferred)"
+                :severity="transferSeverity(data.transferStatus ?? TransferStatus.NotTransferred)"
               />
+            </template>
+          </Column>
+          <Column header="إجراءات" style="width: 220px">
+            <template #body="{ data }">
+              <div class="row-actions-wrap">
+                <Button
+                  v-if="(data.transferStatus ?? TransferStatus.NotTransferred) !== TransferStatus.TransferredToContract"
+                  icon="pi pi-arrow-right"
+                  size="small"
+                  text
+                  rounded
+                  severity="success"
+                  :loading="statusUpdatingId === data.id"
+                  v-tooltip.top="'ترحيل العربون'"
+                  @click="setTransferStatus(data, TransferStatus.TransferredToContract)"
+                />
+                <Button
+                  v-if="(data.transferStatus ?? TransferStatus.NotTransferred) !== TransferStatus.NotTransferred"
+                  icon="pi pi-replay"
+                  size="small"
+                  text
+                  rounded
+                  severity="warn"
+                  :loading="statusUpdatingId === data.id"
+                  v-tooltip.top="'غير مرحل'"
+                  @click="setTransferStatus(data, TransferStatus.NotTransferred)"
+                />
+                <RowActions
+                  show-print
+                  @print="printDepositReceipt(data)"
+                  @edit="openEdit(data)"
+                  @remove="remove(data)"
+                />
+              </div>
             </template>
           </Column>
           <template #empty>
@@ -858,6 +934,12 @@ onMounted(async () => {
   padding: 24px;
   text-align: center;
   color: var(--muted);
+}
+.row-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
 }
 @media (max-width: 700px) {
   .form-grid {
