@@ -6,6 +6,7 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
+import MultiSelect from 'primevue/multiselect'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -27,6 +28,7 @@ import {
   formatMoney,
   labelOf,
   meterReadingSourceOptions,
+  monthOptions,
   serviceBillingModeOptions,
   serviceTypeNameOptions,
 } from '@/utils/enums'
@@ -74,6 +76,8 @@ const editingId = ref<string | null>(null)
 const complexFilter = ref<string | null>(auth.scopedComplexId)
 const billingModeFilter = ref<number | null>(null)
 
+const allMonthValues = monthOptions.map((m) => m.value)
+
 const form = reactive<CreateServiceTypeDto>({
   name: ServiceTypeName.Cleaning,
   displayName: 'نظافة',
@@ -83,8 +87,36 @@ const form = reactive<CreateServiceTypeDto>({
   unitOfMeasure: null,
   readingSource: MeterReadingSource.Manual,
   isActive: true,
+  applicableMonths: [...allMonthValues],
   complexId: '',
 })
+
+const selectedMonths = computed({
+  get: () => form.applicableMonths ?? [],
+  set: (v: number[]) => {
+    form.applicableMonths = v
+  },
+})
+
+const allMonthsSelected = computed(
+  () => selectedMonths.value.length >= 12 || selectedMonths.value.length === 0,
+)
+
+function selectAllMonths() {
+  form.applicableMonths = [...allMonthValues]
+}
+
+function clearMonths() {
+  form.applicableMonths = []
+}
+
+function monthsLabel(row: ServiceType) {
+  if (row.appliesToAllMonths || !row.applicableMonths?.length) return 'كل الأشهر'
+  return row.applicableMonths
+    .map((m) => labelOf(monthOptions, m))
+    .filter((x) => x !== '—')
+    .join('، ')
+}
 
 const complexOptions = computed(() =>
   asSelectOptions(complexes.value, (c) => c.nameAr || c.name || c.id),
@@ -156,6 +188,7 @@ function openCreate() {
     unitOfMeasure: null,
     readingSource: MeterReadingSource.Manual,
     isActive: true,
+    applicableMonths: [...allMonthValues],
     complexId: auth.scopedComplexId || complexFilter.value || complexes.value[0]?.id || '',
   })
   applyLockedDefaults()
@@ -173,6 +206,10 @@ function openEdit(row: ServiceType) {
     unitOfMeasure: row.unitOfMeasure,
     readingSource: row.readingSource,
     isActive: row.isActive,
+    applicableMonths:
+      row.appliesToAllMonths || !row.applicableMonths?.length
+        ? [...allMonthValues]
+        : [...row.applicableMonths],
     complexId: row.complexId,
   })
   dialogVisible.value = true
@@ -187,6 +224,10 @@ async function save() {
     notify.warning('أدخل اسم الخدمة')
     return
   }
+  if (!form.applicableMonths?.length) {
+    notify.warning('اختر شهراً واحداً على الأقل أو كل الأشهر')
+    return
+  }
   saving.value = true
   try {
     const payload = { ...form }
@@ -195,6 +236,9 @@ async function save() {
       payload.unitOfMeasure = null
     } else {
       payload.fixedAmount = 0
+    }
+    if (payload.applicableMonths && payload.applicableMonths.length >= 12) {
+      payload.applicableMonths = null
     }
     if (editingId.value) {
       await updateServiceType(editingId.value, payload)
@@ -305,6 +349,9 @@ onMounted(async () => {
             <span v-else>{{ formatMoney(data.unitPrice) }} / {{ data.unitOfMeasure || 'وحدة' }}</span>
           </template>
         </Column>
+        <Column header="الأشهر" style="min-width: 160px">
+          <template #body="{ data }">{{ monthsLabel(data) }}</template>
+        </Column>
         <Column header="طريقة الحساب" style="width: 140px" sortable>
           <template #body="{ data }">
             {{ data.billingMode === ServiceBillingMode.Metered ? labelOf(meterReadingSourceOptions, data.readingSource) : '—' }}
@@ -330,7 +377,7 @@ onMounted(async () => {
       v-model:visible="dialogVisible"
       modal
       :header="editingId ? `تعديل ${pageTitle}` : addButtonLabel"
-      :style="{ width: '560px' }"
+      :style="{ width: 'min(640px, 96vw)' }"
     >
       <div class="form-grid">
         <div v-if="!isServiceLocked" class="field">
@@ -401,6 +448,39 @@ onMounted(async () => {
             />
           </div>
         </template>
+        <div class="field full">
+          <label>أشهر تطبيق التسعيرة</label>
+          <div class="months-actions">
+            <Button
+              type="button"
+              size="small"
+              :outlined="!allMonthsSelected"
+              :severity="allMonthsSelected ? undefined : 'secondary'"
+              label="كل الأشهر"
+              @click="selectAllMonths"
+            />
+            <Button
+              type="button"
+              size="small"
+              severity="secondary"
+              outlined
+              label="مسح"
+              @click="clearMonths"
+            />
+          </div>
+          <MultiSelect
+            v-model="selectedMonths"
+            :options="monthOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="اختر الأشهر"
+            display="chip"
+            filter
+            append-to="body"
+            class="w-full"
+          />
+          <small class="field-hint">يمكن اختيار شهر واحد أو أكثر، أو «كل الأشهر».</small>
+        </div>
         <div class="field checkbox-field">
           <Checkbox v-model="form.isActive" :binary="true" input-id="svc-active" />
           <label for="svc-active">خدمة نشطة</label>
@@ -417,12 +497,32 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+.field.full {
+  grid-column: 1 / -1;
+}
 .checkbox-field {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
+.months-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.field-hint {
+  color: var(--muted, #64748b);
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+.w-full {
+  width: 100%;
+}
 .locked-box {
   min-height: 2.5rem;
   display: flex;
@@ -432,5 +532,10 @@ onMounted(async () => {
   border-radius: 10px;
   background: #f8fafc;
   font-weight: 700;
+}
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

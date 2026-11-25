@@ -1428,6 +1428,8 @@ export interface ServiceType {
   unitOfMeasure: string | null
   readingSource: MeterReadingSource
   isActive: boolean
+  applicableMonths: number[]
+  appliesToAllMonths: boolean
   complexId: string
   createdAt: string
 }
@@ -1441,6 +1443,8 @@ export interface CreateServiceTypeDto {
   unitOfMeasure?: string | null
   readingSource: MeterReadingSource
   isActive: boolean
+  /** أشهر التطبيق 1–12. فارغ أو كل الأشهر = كل الأشهر */
+  applicableMonths?: number[] | null
   complexId: string
 }
 
@@ -1466,6 +1470,7 @@ export interface ServiceBill {
   residentName?: string | null
   serviceTypeId: string
   serviceDisplayName?: string | null
+  serviceTypeName?: ServiceTypeName | null
   billingMode?: ServiceBillingMode | null
   unitOfMeasure?: string | null
   unitId?: string | null

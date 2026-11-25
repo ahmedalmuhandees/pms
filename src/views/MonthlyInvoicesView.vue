@@ -51,6 +51,8 @@ import {
   monthOptions,
   serviceBillPaymentOptions,
 } from '@/utils/enums'
+import { resolveMediaUrl } from '@/utils/media'
+import { printServiceInvoice } from '@/utils/serviceInvoicePrint'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import TableSortCaption from '@/components/TableSortCaption.vue'
@@ -834,60 +836,14 @@ async function removeBill(row: ServiceBill) {
   }
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-}
-
 function printBills(rows: ServiceBill[]) {
   if (rows.length === 0) return
-  const lines = rows
-    .map(
-      (b) => `<tr>
-      <td>${escapeHtml(b.serviceDisplayName || '—')}</td>
-      <td>${escapeHtml(b.residentName || '—')}</td>
-      <td>${escapeHtml(b.unitNumber || '—')}</td>
-      <td>${escapeHtml(periodLabel(b))}</td>
-      <td>${formatMoney(b.amount)}</td>
-      <td>${formatMoney(b.discount || 0)}</td>
-      <td>${formatMoney(netOf(b))}</td>
-      <td>${b.paid ? 'مسدد' : 'غير مسدد'}</td>
-      <td>${escapeHtml(paymentLabel(b.paymentMethod))}</td>
-    </tr>`,
-    )
-    .join('')
-  const totalNet = rows.reduce((s, b) => s + netOf(b), 0)
-  const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/><title>فواتير شهرية</title>
-  <style>
-    body{font-family:Tahoma,Arial,sans-serif;padding:24px;color:#111}
-    h1{font-size:18px;margin:0 0 12px}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th,td{border:1px solid #ccc;padding:8px;text-align:right}
-    th{background:#f3f4f6}
-    .total{margin-top:12px;font-weight:700}
-  </style></head><body>
-  <h1>فواتير خدمات شهرية</h1>
-  <table>
-    <thead><tr>
-      <th>الخدمة</th><th>الساكن</th><th>الوحدة</th><th>الفترة</th>
-      <th>المبلغ</th><th>الخصم</th><th>الصافي</th><th>الحالة</th><th>السداد</th>
-    </tr></thead>
-    <tbody>${lines}</tbody>
-  </table>
-  <div class="total">الإجمالي: ${formatMoney(totalNet)}</div>
-  </body></html>`
-  const win = window.open('', '_blank')
-  if (!win) {
+  const complexId = rows[0]?.complexId
+  const complex = complexes.value.find((c) => c.id === complexId)
+  const logoUrl = complex?.logoUrl ? resolveMediaUrl(complex.logoUrl) : null
+  if (!printServiceInvoice({ rows, logoUrl })) {
     notify.warning('اسمح بالنوافذ المنبثقة للطباعة')
-    return
   }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  setTimeout(() => win.print(), 250)
 }
 
 onMounted(async () => {

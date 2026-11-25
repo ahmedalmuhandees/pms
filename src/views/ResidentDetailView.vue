@@ -52,6 +52,7 @@ import {
   serviceBillPaymentOptions,
 } from '@/utils/enums'
 import { resolveMediaUrl } from '@/utils/media'
+import { printServiceInvoice } from '@/utils/serviceInvoicePrint'
 import PageHeader from '@/components/PageHeader.vue'
 
 type ProfileSection = 'personal' | 'family' | 'handover' | 'emergency' | 'invoices'
@@ -434,60 +435,16 @@ function paymentLabel(method?: PaymentMethod | null) {
 
 function printBills(rows: ServiceBill[]) {
   if (!profile.value || rows.length === 0) return
-  const lines = rows
-    .map(
-      (b) => `<tr>
-      <td>${escapeHtml(b.serviceDisplayName || '—')}</td>
-      <td>${escapeHtml(periodLabel(b))}</td>
-      <td>${formatMoney(b.amount)}</td>
-      <td>${formatMoney(b.discount || 0)}</td>
-      <td>${formatMoney(b.netAmount ?? b.amount - (b.discount || 0))}</td>
-      <td>${b.paid ? 'مسدد' : 'غير مسدد'}</td>
-      <td>${escapeHtml(paymentLabel(b.paymentMethod))}</td>
-    </tr>`,
-    )
-    .join('')
-  const total = rows.reduce((s, b) => s + Number(b.netAmount ?? b.amount - (b.discount || 0)), 0)
-  const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/><title>فواتير شهرية</title>
-  <style>
-    body{font-family:Tahoma,Arial,sans-serif;padding:24px;color:#111}
-    h1{font-size:18px;margin:0 0 8px} .meta{color:#555;margin-bottom:16px}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th,td{border:1px solid #ccc;padding:8px;text-align:right}
-    th{background:#f3f4f6}
-    .total{margin-top:12px;font-weight:700}
-  </style></head><body>
-  <h1>فاتورة خدمات شهرية</h1>
-  <div class="meta">
-    الساكن: ${escapeHtml(profile.value.primaryResidentName || '—')}<br/>
-    الوحدة: ${escapeHtml(profile.value.unitNumber || '—')}
-    ${profile.value.buildingName ? ` — مبنى ${escapeHtml(profile.value.buildingName)}` : ''}
-  </div>
-  <table>
-    <thead><tr>
-      <th>الخدمة</th><th>الفترة</th><th>المبلغ</th><th>الخصم</th><th>الصافي</th><th>الحالة</th><th>طريقة السداد</th>
-    </tr></thead>
-    <tbody>${lines}</tbody>
-  </table>
-  <div class="total">الإجمالي: ${formatMoney(total)}</div>
-  </body></html>`
-  const win = window.open('', '_blank')
-  if (!win) {
+  const enriched = rows.map((b) => ({
+    ...b,
+    residentName: b.residentName || profile.value?.primaryResidentName || null,
+    unitNumber: b.unitNumber || profile.value?.unitNumber || null,
+  }))
+  const complex = complexes.value.find((c) => c.id === enriched[0]?.complexId)
+  const logoUrl = complex?.logoUrl ? resolveMediaUrl(complex.logoUrl) : null
+  if (!printServiceInvoice({ rows: enriched, logoUrl })) {
     notify.warning('اسمح بالنوافذ المنبثقة للطباعة')
-    return
   }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  setTimeout(() => win.print(), 250)
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
 }
 
 watch(profileSection, (section) => {
