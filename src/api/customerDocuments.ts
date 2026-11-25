@@ -36,3 +36,11 @@ export async function deleteCustomerDocument(customerId: string, id: string) {
   )
   return unwrap(res)
 }
+
+/** تنزيل ملف المستند (مصادَق) بعد الرفع والحفظ */
+export async function downloadCustomerDocument(customerId: string, id: string) {
+  const res = await apiClient.get<Blob>(`/api/customers/${customerId}/documents/${id}/download`, {
+    responseType: 'blob',
+  })
+  return res.data
+}

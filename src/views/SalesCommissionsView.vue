@@ -6,27 +6,32 @@ import Select from 'primevue/select'
 import AutoComplete from 'primevue/autocomplete'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
+import ToggleSwitch from 'primevue/toggleswitch'
 import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type { Complex } from '@/types'
+import { SalesCommissionSource } from '@/types'
 import {
   createSalesCommission,
   deleteSalesCommission,
   getSalesCommissions,
   lookupSalesCommissionContracts,
+  lookupSalesCommissionReservations,
   updateSalesCommission,
   type CreateSalesCommissionPayload,
   type SalesCommission,
   type SalesCommissionContractLookup,
   type SalesCommissionParams,
+  type SalesCommissionReservationLookup,
 } from '@/api/salesCommissions'
 import { getComplexes } from '@/api/complexes'
 import { getErrorMessage } from '@/api/client'
 import { usePagedList } from '@/composables/usePagedList'
 import { useNotify, useConfirmAction } from '@/composables/useNotify'
-import { asSelectOptions, formatDate, formatMoney } from '@/utils/enums'
+import { asSelectOptions, formatDate, formatMoney, salesCommissionSourceOptions } from '@/utils/enums'
 import { resolveMediaUrl } from '@/utils/media'
+import { openReceiptPrintWindow, wrapDualA5ReceiptDocument } from '@/utils/receiptPrintLayout'
 import PageHeader from '@/components/PageHeader.vue'
 import FilterBar from '@/components/FilterBar.vue'
 import TableSortCaption from '@/components/TableSortCaption.vue'
@@ -41,7 +46,9 @@ const { ask } = useConfirmAction()
 const complexes = ref<Complex[]>([])
 const complexFilter = ref<string | null>(auth.scopedComplexId)
 const contractSuggestions = ref<SalesCommissionContractLookup[]>([])
+const reservationSuggestions = ref<SalesCommissionReservationLookup[]>([])
 const selectedContract = ref<SalesCommissionContractLookup | null>(null)
+const selectedReservation = ref<SalesCommissionReservationLookup | null>(null)
 
 const {
   items, loading, page, pageSize, total, search, load, onSearch, setFilter, setSortMode,
@@ -55,7 +62,9 @@ const receiptDateModel = ref<Date | null>(new Date())
 
 const form = reactive({
   complexId: '' as string,
+  source: SalesCommissionSource.Contract as number,
   salesContractId: '' as string,
+  reservationId: '' as string,
   commissionPercent: 2 as number,
   commissionAmount: 0 as number,
   consultantName: '' as string,
@@ -63,7 +72,12 @@ const form = reactive({
   customerPhone: '' as string,
   unitNumber: '' as string,
   sellingPrice: 0 as number,
+  showRefundDisclaimer: true as boolean,
 })
+
+const isFromReservation = computed(
+  () => Number(form.source) === SalesCommissionSource.Reservation,
+)
 
 const complexOptions = computed(() =>
   asSelectOptions(complexes.value, (c) => c.nameAr || c.name || c.id),
@@ -72,7 +86,9 @@ const complexOptions = computed(() =>
 const descriptionPreview = computed(() => {
   const pct = formatPercent(form.commissionPercent)
   const unit = form.unitNumber || '—'
-  return `عمولة ${pct}% للشقة رقم ${unit}`
+  return isFromReservation.value
+    ? `عمولة ${pct}% من حجز مؤكد للشقة رقم ${unit}`
+    : `عمولة ${pct}% للشقة رقم ${unit}`
 })
 
 const redDisclaimer = computed(() => {
@@ -109,16 +125,35 @@ async function searchContracts(event: { query: string }) {
   contractSuggestions.value = await lookupSalesCommissionContracts(complexId, event.query || undefined)
 }
 
-function applyContract(contract: SalesCommissionContractLookup | null) {
-  if (!contract || typeof contract !== 'object' || !('id' in contract)) {
-    form.salesContractId = ''
-    form.customerName = ''
-    form.customerPhone = ''
-    form.unitNumber = ''
-    form.sellingPrice = 0
-    form.commissionAmount = 0
+async function searchReservations(event: { query: string }) {
+  const complexId = form.complexId || complexFilter.value
+  if (!complexId) {
+    reservationSuggestions.value = []
     return
   }
+  reservationSuggestions.value = await lookupSalesCommissionReservations(
+    complexId,
+    event.query || undefined,
+  )
+}
+
+function clearSourceFields() {
+  form.salesContractId = ''
+  form.reservationId = ''
+  form.customerName = ''
+  form.customerPhone = ''
+  form.unitNumber = ''
+  form.sellingPrice = 0
+  form.commissionAmount = 0
+  form.consultantName = ''
+}
+
+function applyContract(contract: SalesCommissionContractLookup | null) {
+  if (!contract || typeof contract !== 'object' || !('id' in contract)) {
+    clearSourceFields()
+    return
+  }
+  form.reservationId = ''
   form.salesContractId = contract.id
   form.complexId = contract.complexId
   form.customerName = contract.customerName
@@ -130,15 +165,44 @@ function applyContract(contract: SalesCommissionContractLookup | null) {
   }
 }
 
+function applyReservation(reservation: SalesCommissionReservationLookup | null) {
+  if (!reservation || typeof reservation !== 'object' || !('id' in reservation)) {
+    clearSourceFields()
+    return
+  }
+  form.salesContractId = ''
+  form.reservationId = reservation.id
+  form.complexId = reservation.complexId
+  form.customerName = reservation.customerName
+  form.customerPhone = reservation.customerPhone || ''
+  form.unitNumber = reservation.unitNumber || ''
+  form.sellingPrice = reservation.sellingPrice
+  form.consultantName = reservation.consultantName || form.consultantName
+  if (form.commissionPercent > 0) {
+    form.commissionAmount = Math.round((reservation.sellingPrice * form.commissionPercent) / 100)
+  }
+}
+
+function onSourceChange() {
+  form.source = Number(form.source) as typeof form.source
+  selectedContract.value = null
+  selectedReservation.value = null
+  clearSourceFields()
+}
+
 watch(selectedContract, (c) => applyContract(c as SalesCommissionContractLookup | null))
+watch(selectedReservation, (r) => applyReservation(r as SalesCommissionReservationLookup | null))
 
 function openCreate() {
   editingId.value = null
   receiptDateModel.value = new Date()
   selectedContract.value = null
+  selectedReservation.value = null
   Object.assign(form, {
     complexId: complexFilter.value || auth.scopedComplexId || '',
+    source: SalesCommissionSource.Contract,
     salesContractId: '',
+    reservationId: '',
     commissionPercent: 2,
     commissionAmount: 0,
     consultantName: '',
@@ -146,6 +210,7 @@ function openCreate() {
     customerPhone: '',
     unitNumber: '',
     sellingPrice: 0,
+    showRefundDisclaimer: true,
   })
   dialogVisible.value = true
 }
@@ -153,18 +218,39 @@ function openCreate() {
 function openEdit(row: SalesCommission) {
   editingId.value = row.id
   receiptDateModel.value = row.receiptDate ? new Date(row.receiptDate) : new Date()
-  selectedContract.value = {
-    id: row.salesContractId,
-    contractNumber: row.contractNumber || '',
-    customerName: row.customerName,
-    customerPhone: row.customerPhone,
-    unitNumber: row.unitNumber,
-    sellingPrice: row.sellingPrice,
-    complexId: row.complexId,
+  const source = row.source || (row.reservationId
+    ? SalesCommissionSource.Reservation
+    : SalesCommissionSource.Contract)
+  selectedContract.value = null
+  selectedReservation.value = null
+  if (source === SalesCommissionSource.Reservation && row.reservationId) {
+    selectedReservation.value = {
+      id: row.reservationId,
+      reservationDate: row.receiptDate,
+      customerName: row.customerName,
+      customerPhone: row.customerPhone,
+      unitNumber: row.unitNumber,
+      sellingPrice: row.sellingPrice,
+      reservationAmount: 0,
+      consultantName: row.consultantName,
+      complexId: row.complexId,
+    }
+  } else if (row.salesContractId) {
+    selectedContract.value = {
+      id: row.salesContractId,
+      contractNumber: row.contractNumber || '',
+      customerName: row.customerName,
+      customerPhone: row.customerPhone,
+      unitNumber: row.unitNumber,
+      sellingPrice: row.sellingPrice,
+      complexId: row.complexId,
+    }
   }
   Object.assign(form, {
     complexId: row.complexId,
-    salesContractId: row.salesContractId,
+    source,
+    salesContractId: row.salesContractId || '',
+    reservationId: row.reservationId || '',
     commissionPercent: row.commissionPercent,
     commissionAmount: row.commissionAmount,
     consultantName: row.consultantName || '',
@@ -172,13 +258,16 @@ function openEdit(row: SalesCommission) {
     customerPhone: row.customerPhone || '',
     unitNumber: row.unitNumber || '',
     sellingPrice: row.sellingPrice,
+    showRefundDisclaimer: row.showRefundDisclaimer !== false,
   })
   dialogVisible.value = true
 }
 
 function buildPayload(): CreateSalesCommissionPayload {
   return {
-    salesContractId: form.salesContractId,
+    source: Number(form.source) as SalesCommissionSource,
+    salesContractId: isFromReservation.value ? null : form.salesContractId || null,
+    reservationId: isFromReservation.value ? form.reservationId || null : null,
     complexId: form.complexId,
     receiptDate: receiptDateModel.value
       ? new Date(receiptDateModel.value.getFullYear(), receiptDateModel.value.getMonth(), receiptDateModel.value.getDate()).toISOString()
@@ -187,12 +276,21 @@ function buildPayload(): CreateSalesCommissionPayload {
     commissionAmount: form.commissionAmount,
     description: descriptionPreview.value,
     consultantName: form.consultantName || null,
+    showRefundDisclaimer: form.showRefundDisclaimer,
   }
 }
 
 async function save() {
-  if (!form.complexId || !form.salesContractId) {
-    notify.warning('اختر المجمع والعقد')
+  if (!form.complexId) {
+    notify.warning('اختر المجمع')
+    return
+  }
+  if (isFromReservation.value && !form.reservationId) {
+    notify.warning('اختر الحجز المؤكد')
+    return
+  }
+  if (!isFromReservation.value && !form.salesContractId) {
+    notify.warning('اختر العقد')
     return
   }
   if (!form.commissionPercent || form.commissionPercent <= 0) {
@@ -255,175 +353,11 @@ function printReceipt(row: SalesCommission) {
   const words = numberToArabicWords(row.commissionAmount)
   const phone = row.customerPhone?.trim() || '/'
   const pct = formatPercent(row.commissionPercent)
+  const showDisclaimer = row.showRefundDisclaimer !== false
   const disclaimer = `العمولة الادارية ${pct}% في حالة تم الاسترجاع يتم خصم ١% من مبلغ العمولة`
   const desc = row.description || `عمولة ${pct}% للشقة رقم ${row.unitNumber || '—'}`
 
-  const html = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="utf-8"/>
-<title>وصل قبض — ${escapeHtml(row.receiptNumber)}</title>
-<style>
-  @page { size: A4 landscape; margin: 10mm 12mm; }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: #fff;
-    color: #000;
-    direction: rtl;
-    font-family: "Arial", "Tahoma", "Segoe UI", sans-serif;
-  }
-  .sheet {
-    width: 273mm;
-    max-width: 100%;
-    min-height: 180mm;
-    margin: 0 auto;
-    padding: 8mm 10mm 6mm;
-    position: relative;
-  }
-  .brand-header {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 22mm;
-    margin-bottom: 2mm;
-  }
-  /* RTL: أول عنصر = اليمين */
-  .brand-title {
-    color: #5eb7e9;
-    font-size: 42px;
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: 0;
-    margin: 0;
-    padding: 0 2mm 0 0;
-    white-space: nowrap;
-  }
-  .brand-logo {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 0 0 0 2mm;
-  }
-  .brand-logo img {
-    height: 68px;
-    width: auto;
-    max-width: 170px;
-    object-fit: contain;
-    display: block;
-  }
-  .rule {
-    border: 0;
-    border-top: 2.5px dashed #5eb7e9;
-    margin: 3mm 0 4mm;
-  }
-  .title-row {
-    margin: 1mm 0 3mm;
-    text-align: center;
-  }
-  .title-row h1 {
-    margin: 0;
-    text-align: center;
-    font-size: 28px;
-    font-weight: 700;
-    color: #000;
-  }
-  .meta {
-    text-align: right;
-    font-size: 16px;
-    line-height: 1.7;
-    margin: 0 0 3mm;
-  }
-  .meta strong { font-weight: 700; }
-  .field {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    margin: 3.2mm 0;
-    font-size: 16px;
-  }
-  .field .label {
-    white-space: nowrap;
-    font-weight: 700;
-    padding-bottom: 2px;
-  }
-  .field .line {
-    flex: 1;
-    min-height: 1.35em;
-    border-bottom: 1.5px dashed #666;
-    text-align: center;
-    font-weight: 400;
-    padding: 0 8px 2px;
-  }
-  .amount-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 3.5mm 0;
-    font-size: 16px;
-  }
-  .amount-row .label { font-weight: 700; white-space: nowrap; }
-  .amount-box {
-    border: 1.6px solid #111;
-    padding: 4px 14px;
-    font-weight: 700;
-    font-size: 16px;
-    white-space: nowrap;
-    background: #fff;
-  }
-  .amount-words {
-    flex: 1;
-    text-align: center;
-    font-weight: 400;
-    font-size: 16px;
-    border-bottom: 1.5px dashed #666;
-    padding: 0 8px 3px;
-    min-height: 1.35em;
-  }
-  .warn {
-    color: #c00000;
-    font-size: 15px;
-    font-weight: 700;
-    text-align: center;
-    margin: 6mm 0 5mm;
-  }
-  .signs {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin: 2mm 18mm 6mm;
-  }
-  .sign { text-align: center; min-width: 140px; }
-  .sign .role { font-weight: 700; font-size: 17px; margin-bottom: 10mm; }
-  .sign .name { font-size: 15px; font-weight: 400; }
-  .footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #000;
-    margin-top: 1mm;
-  }
-  .footer .addr { text-align: right; }
-  .footer .tel { text-align: left; direction: ltr; unicode-bidi: isolate; font-weight: 700; }
-  .sheet-bottom {
-    border: 0;
-    border-bottom: 1px solid #111;
-    margin-top: 4mm;
-  }
-  @media print {
-    html, body { background: #fff; }
-    .sheet { width: auto; padding: 0; }
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  }
-</style>
-</head>
-<body>
-  <div class="sheet">
+  const sheetInner = `
     <div class="brand-header">
       <div class="brand-title">أبراج سما</div>
       <div class="brand-logo">
@@ -431,16 +365,11 @@ function printReceipt(row: SalesCommission) {
       </div>
     </div>
     <hr class="rule"/>
-
-    <div class="title-row">
-      <h1>وصل قبض</h1>
-    </div>
-
+    <div class="title-row"><h1>وصل قبض</h1></div>
     <div class="meta">
       <div><strong>تاريخ :</strong> ${escapeHtml(dateStr)}</div>
       <div><strong>رقم :</strong> ${escapeHtml(receiptNo)}</div>
     </div>
-
     <div class="field">
       <span class="label">استلمت من السيد/ة :</span>
       <span class="line">${escapeHtml(row.customerName || '—')}</span>
@@ -462,9 +391,7 @@ function printReceipt(row: SalesCommission) {
       <span class="label">مستشار العقاري :</span>
       <span class="line">${escapeHtml(row.consultantName || '—')}</span>
     </div>
-
-    <div class="warn">${escapeHtml(disclaimer)}</div>
-
+    ${showDisclaimer ? `<div class="warn">${escapeHtml(disclaimer)}</div>` : ''}
     <div class="signs">
       <div class="sign">
         <div class="role">زبون</div>
@@ -475,25 +402,20 @@ function printReceipt(row: SalesCommission) {
         <div class="name">${escapeHtml(row.accountantName || '—')}</div>
       </div>
     </div>
-
     <hr class="rule"/>
     <div class="footer">
       <div class="addr">${escapeHtml(address)}</div>
       <div class="tel">${escapeHtml(phones)}</div>
     </div>
-    <div class="sheet-bottom"></div>
-  </div>
-</body>
-</html>`
+    <div class="sheet-bottom"></div>`
 
-  const win = window.open('', '_blank')
-  if (!win) {
+  const html = wrapDualA5ReceiptDocument({
+    title: `وصل قبض — ${escapeHtml(row.receiptNumber)}`,
+    sheetInnerHtml: sheetInner,
+  })
+  if (!openReceiptPrintWindow(html)) {
     notify.warning('اسمح بالنوافذ المنبثقة للطباعة')
-    return
   }
-  win.document.open()
-  win.document.write(html)
-  win.document.close()
 }
 
 function formatPercent(value: number) {
@@ -626,6 +548,11 @@ onMounted(async () => {
       <Column field="receiptDate" header="التاريخ" sortable>
         <template #body="{ data }">{{ formatDate(data.receiptDate) }}</template>
       </Column>
+      <Column header="المصدر" style="width: 110px">
+        <template #body="{ data }">
+          {{ data.source === 2 || data.reservationId ? 'حجز' : 'عقد' }}
+        </template>
+      </Column>
       <Column field="customerName" header="العميل" />
       <Column field="unitNumber" header="الوحدة" />
       <Column field="commissionPercent" header="النسبة">
@@ -674,6 +601,20 @@ onMounted(async () => {
         </div>
 
         <div class="field">
+          <label>مصدر النسبة</label>
+          <Select
+            v-model="form.source"
+            :options="salesCommissionSourceOptions"
+            option-label="label"
+            option-value="value"
+            class="w-full"
+            append-to="body"
+            checkmark
+            @update:model-value="onSourceChange"
+          />
+        </div>
+
+        <div v-if="!isFromReservation" class="field">
           <label>اختيار العقد</label>
           <AutoComplete
             v-model="selectedContract"
@@ -692,6 +633,31 @@ onMounted(async () => {
               </div>
             </template>
           </AutoComplete>
+        </div>
+
+        <div v-else class="field">
+          <label>اختيار الحجز المؤكد</label>
+          <AutoComplete
+            v-model="selectedReservation"
+            :suggestions="reservationSuggestions"
+            option-label="customerName"
+            force-selection
+            dropdown
+            class="w-full"
+            placeholder="ابحث بالعميل / الوحدة / المستشار"
+            @complete="searchReservations"
+          >
+            <template #option="{ option }">
+              <div class="contract-opt">
+                <strong>{{ option.unitNumber || '—' }}</strong>
+                <span>
+                  {{ option.customerName }} — {{ formatMoney(option.sellingPrice) }}
+                  <template v-if="option.consultantName"> — {{ option.consultantName }}</template>
+                </span>
+              </div>
+            </template>
+          </AutoComplete>
+          <small class="hint">يظهر فقط الحجوزات ذات الحالة «مؤكد»</small>
         </div>
 
         <div class="field">
@@ -744,8 +710,12 @@ onMounted(async () => {
           <InputText v-model="form.consultantName" class="w-full" placeholder="يُدخل يدوياً" />
         </div>
 
-        <div class="field full">
+        <div class="field full disclaimer-row">
           <p class="red-note">{{ redDisclaimer }}</p>
+          <div class="disclaimer-toggle">
+            <ToggleSwitch v-model="form.showRefundDisclaimer" />
+            <small>{{ form.showRefundDisclaimer ? 'تظهر في الطباعة' : 'مخفية من الطباعة' }}</small>
+          </div>
         </div>
 
         <div class="signs-preview full">
@@ -802,6 +772,21 @@ onMounted(async () => {
   font-size: 0.92rem;
   text-align: center;
   line-height: 1.6;
+  flex: 1;
+}
+.disclaimer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.disclaimer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  color: var(--p-text-muted-color, #64748b);
+  font-size: 0.82rem;
 }
 .signs-preview {
   display: flex;

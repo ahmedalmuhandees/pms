@@ -1,1 +1,0 @@
-import{$ as e}from"./basecomponent-DLOa3yRk.js";var t=e();export{t};

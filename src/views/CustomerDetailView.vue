@@ -50,6 +50,7 @@ import {
 } from '@/api/payments'
 import {
   deleteCustomerDocument,
+  downloadCustomerDocument,
   getCustomerDocuments,
   uploadCustomerDocument,
 } from '@/api/customerDocuments'
@@ -131,6 +132,7 @@ const bankPaymentTotal = computed(() =>
 const documents = ref<CustomerDocument[]>([])
 const documentsLoading = ref(false)
 const uploadingDoc = ref(false)
+const downloadingDocId = ref<string | null>(null)
 const docFile = ref<File | null>(null)
 const docInputRef = ref<HTMLInputElement | null>(null)
 const docForm = reactive({
@@ -310,11 +312,10 @@ function remainingOf(row: Installment) {
 }
 
 function installmentLabelOf(row: CustomerInstallment) {
-  if (row.isDownPayment) {
-    return row.name?.trim() || 'دفعة مقدمة'
-  }
+  if (row.name?.trim()) return row.name.trim()
+  if (row.isDownPayment) return 'دفعة مقدمة'
   const siblings = contractInstallments.value
-    .filter((i) => i.planID === row.planID)
+    .filter((i) => i.planID === row.planID && !String(i.name || '').startsWith('الباقي من '))
     .slice()
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
   const index = siblings.findIndex((i) => i.id === row.id) + 1
@@ -813,11 +814,33 @@ async function downloadSelectedContractPdf() {
   }
 }
 
-function printSelectedContract(variant?: 'bank') {
+async function printSelectedContract(variant?: 'bank') {
   if (!selectedContract.value) return
+  const ALZHRAA = '08df2238-f846-4fa4-80c7-efd2f98b1109'
+  const c = selectedContract.value
+  // عقود الزهراء (خصوصاً بدون contractDesignId) → PDF مباشرة وليس قالب سما HTML
+  if ((c.complexId || '').toLowerCase() === ALZHRAA && variant !== 'bank') {
+    contractPdfBusy.value = true
+    try {
+      const blob = await downloadSalesContractPdf(c.id)
+      if (blob.type && blob.type.includes('json')) {
+        const text = await blob.text()
+        const parsed = JSON.parse(text)
+        throw new Error(parsed.message || 'فشل توليد ملف PDF')
+      }
+      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    } catch (error) {
+      notify.error(getErrorMessage(error))
+    } finally {
+      contractPdfBusy.value = false
+    }
+    return
+  }
   const resolved = router.resolve({
     name: 'sales-contract-print',
-    params: { id: selectedContract.value.id },
+    params: { id: c.id },
     query: variant ? { variant } : undefined,
   })
   window.open(resolved.href, '_blank', 'noopener,noreferrer')
@@ -1017,6 +1040,34 @@ async function submitDocument() {
     notify.error(getErrorMessage(error))
   } finally {
     uploadingDoc.value = false
+  }
+}
+
+async function downloadDocument(doc: CustomerDocument) {
+  if (!doc.filePath && !doc.id) {
+    notify.warning('لا يوجد ملف للتنزيل')
+    return
+  }
+  downloadingDocId.value = doc.id
+  try {
+    const blob = await downloadCustomerDocument(customerId.value, doc.id)
+    if (blob.type && blob.type.includes('json')) {
+      const text = await blob.text()
+      const parsed = JSON.parse(text) as { message?: string }
+      throw new Error(parsed.message || 'فشل تنزيل المستند')
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = doc.originalFileName || `مستند-${doc.id.slice(0, 8)}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (error) {
+    notify.error(getErrorMessage(error))
+  } finally {
+    downloadingDocId.value = null
   }
 }
 
@@ -1816,15 +1867,27 @@ onMounted(() => {
                   <Column header="الملاحظات">
                     <template #body="{ data }">{{ data.notes || '—' }}</template>
                   </Column>
-                  <Column header="" style="width: 100px">
+                  <Column header="" style="width: 180px">
                     <template #body="{ data }">
-                      <Button
-                        icon="pi pi-trash"
-                        severity="danger"
-                        text
-                        rounded
-                        @click="removeDocument(data)"
-                      />
+                      <div class="docs-actions">
+                        <Button
+                          v-if="data.filePath"
+                          icon="pi pi-download"
+                          label="تنزيل"
+                          severity="secondary"
+                          text
+                          size="small"
+                          :loading="downloadingDocId === data.id"
+                          @click="downloadDocument(data)"
+                        />
+                        <Button
+                          icon="pi pi-trash"
+                          severity="danger"
+                          text
+                          rounded
+                          @click="removeDocument(data)"
+                        />
+                      </div>
                     </template>
                   </Column>
                   <template #empty><div class="empty-box">لا توجد مستندات</div></template>
@@ -1929,15 +1992,27 @@ onMounted(() => {
                   <Column header="الملاحظات">
                     <template #body="{ data }">{{ data.notes || '—' }}</template>
                   </Column>
-                  <Column header="" style="width: 100px">
+                  <Column header="" style="width: 180px">
                     <template #body="{ data }">
-                      <Button
-                        icon="pi pi-trash"
-                        severity="danger"
-                        text
-                        rounded
-                        @click="removeDocument(data)"
-                      />
+                      <div class="docs-actions">
+                        <Button
+                          v-if="data.filePath"
+                          icon="pi pi-download"
+                          label="تنزيل"
+                          severity="secondary"
+                          text
+                          size="small"
+                          :loading="downloadingDocId === data.id"
+                          @click="downloadDocument(data)"
+                        />
+                        <Button
+                          icon="pi pi-trash"
+                          severity="danger"
+                          text
+                          rounded
+                          @click="removeDocument(data)"
+                        />
+                      </div>
                     </template>
                   </Column>
                   <template #empty><div class="empty-box">لا توجد مستندات</div></template>
@@ -2809,6 +2884,13 @@ onMounted(() => {
 .docs-actions {
   margin-top: 10px;
   justify-content: flex-start;
+}
+
+.docs-table .docs-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0;
 }
 
 .docs-table {

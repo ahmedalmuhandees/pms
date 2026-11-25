@@ -10,6 +10,8 @@ import { getComplex } from '@/api/complexes'
 import { getContractDesign } from '@/api/contractDesigns'
 import { getEmployee } from '@/api/employees'
 import { getErrorMessage } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
+import { useComplexBrandStore } from '@/stores/complexBrand'
 import {
   contractPaymentTypeOptions,
   contractStatusOptions,
@@ -17,7 +19,6 @@ import {
   labelOf,
 } from '@/utils/enums'
 import {
-  PdfLayoutKind,
   type Complex,
   type ContractDesign,
   type Customer,
@@ -27,6 +28,8 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
+const brand = useComplexBrandStore()
 
 const loading = ref(true)
 const error = ref('')
@@ -42,30 +45,39 @@ const salesAgentName = ref('—')
 
 const isBankVariant = computed(() => route.query.variant === 'bank')
 
+const ALZHRAA_COMPLEX_ID = '08df2238-f846-4fa4-80c7-efd2f98b1109'
+
 function isSamaComplex(c: Complex | null | undefined): boolean {
   if (!c) return false
-  const ar = (c.nameAr || '').toLowerCase()
+  const slug = (c.portalSlug || '').trim().toLowerCase()
+  if (slug === 'sama') return true
+  if (slug === 'zhsc') return false
+  const id = (c.id || '').toLowerCase()
+  if (id === ALZHRAA_COMPLEX_ID) return false
+  const ar = c.nameAr || ''
   const en = (c.name || '').toLowerCase()
-  const slug = (c.portalSlug || '').toLowerCase()
-  return ar.includes('سما') || en.includes('sama') || slug.includes('sama')
+  return /أبراج\s*سما|مجمع\s*سما|\bsama\b/i.test(`${ar} ${en}`)
 }
 
-function layoutKind(d: ContractDesign | null | undefined): number {
-  const k = d?.pdfLayoutKind
-  if (k === PdfLayoutKind.DreamCity || k === 'DreamCity') return PdfLayoutKind.DreamCity
-  if (k === PdfLayoutKind.TemplateOverlay || k === 'TemplateOverlay') return PdfLayoutKind.TemplateOverlay
-  if (k === PdfLayoutKind.Standard || k === 'Standard') return PdfLayoutKind.Standard
-  if (typeof k === 'number') return k
-  return PdfLayoutKind.Standard
+function isAlzhraaComplexId(id: string | null | undefined): boolean {
+  return (id || '').toLowerCase() === ALZHRAA_COMPLEX_ID
 }
 
-/** مجمع سما، أو تصميم بدون قالب مرفوع (قياسي / بدون templatePath) */
-function shouldUseHtmlTemplate(c: Complex | null, d: ContractDesign | null): boolean {
-  if (isSamaComplex(c)) return true
-  const kind = layoutKind(d)
-  if (kind === PdfLayoutKind.DreamCity) return false
-  if (kind === PdfLayoutKind.TemplateOverlay && d?.templatePath) return false
-  return true
+/**
+ * قالب HTML لسما فقط.
+ * عقد الزهراء (حتى بدون contractDesignId) → PDF دائماً.
+ */
+function shouldUseHtmlTemplate(
+  c: Complex | null,
+  contractComplexId?: string | null,
+): boolean {
+  if (isAlzhraaComplexId(contractComplexId) || isAlzhraaComplexId(c?.id)) return false
+  const slug = (brand.slug || '').trim().toLowerCase()
+  if (slug === 'zhsc') return false
+  const scoped = (auth.scopedComplexId || '').toLowerCase()
+  if (isAlzhraaComplexId(scoped)) return false
+  if (slug === 'sama') return true
+  return isSamaComplex(c)
 }
 
 function readBankPdfOptions(contractId: string): BankPdfOptions | undefined {
@@ -110,9 +122,26 @@ async function load() {
       return
     }
 
-    // قرّر المسار: HTML لسما / بدون قالب، وإلا PDF
     const contract = await getSalesContract(id)
     salesContract.value = contract
+
+    // عقد الزهراء بدون تصميم مرتبط كان يفتح HTML سما — اجبر PDF فوراً
+    if (isAlzhraaComplexId(contract.complexId) || (brand.slug || '').toLowerCase() === 'zhsc') {
+      const [cust, u, cx, agent] = await Promise.all([
+        getCustomer(contract.customerId).catch(() => null),
+        getUnit(contract.unitId).catch(() => null),
+        getComplex(contract.complexId).catch(() => null),
+        contract.salesAgentId
+          ? getEmployee(contract.salesAgentId).catch(() => null)
+          : Promise.resolve(null),
+      ])
+      customer.value = cust
+      unit.value = u
+      complex.value = cx
+      salesAgentName.value = agent?.name?.trim() || '—'
+      await loadPdf(id, variant)
+      return
+    }
 
     const [cust, u, cx, agent] = await Promise.all([
       getCustomer(contract.customerId),
@@ -131,9 +160,12 @@ async function load() {
     if (!d && contract.contractDesignId) {
       d = await getContractDesign(contract.contractDesignId).catch(() => null)
     }
+    if (d && d.complexId && d.complexId !== contract.complexId) {
+      d = null
+    }
     design.value = d
 
-    if (shouldUseHtmlTemplate(cx, d)) {
+    if (shouldUseHtmlTemplate(cx, contract.complexId)) {
       mode.value = 'html'
       return
     }

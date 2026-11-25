@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget =
     env.VITE_API_PROXY_TARGET ||
     (mode === 'development' ? 'http://127.0.0.1:5216' : env.VITE_API_BASE_URL) ||
-    'https://pmsaas-api.execute-iq.com'
+    'https://apicomplex.solidcode-iq.com'
 
   return {
     plugins: [

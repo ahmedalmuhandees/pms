@@ -681,14 +681,22 @@ export interface ScanVisitorPassResult {
   qrCodeToken: string
 }
 
+/** مطابق للباكند: Cancelled=3, Expired=4 */
 export const ReservationStatus = {
   Pending: 1,
   Confirmed: 2,
-  Expired: 3,
-  Cancelled: 4,
+  Cancelled: 3,
+  Expired: 4,
   Converted: 5,
 } as const
 export type ReservationStatus = (typeof ReservationStatus)[keyof typeof ReservationStatus]
+
+export const SalesCommissionSource = {
+  Contract: 1,
+  Reservation: 2,
+} as const
+export type SalesCommissionSource =
+  (typeof SalesCommissionSource)[keyof typeof SalesCommissionSource]
 
 export const ContractStatus = {
   Draft: 1,
@@ -722,6 +730,14 @@ export const PricingMode = {
   CustomSchedule: 3,
 } as const
 export type PricingMode = (typeof PricingMode)[keyof typeof PricingMode]
+
+/** مصدر تقسيم دفعات العقد (تلقائي بالسنوات/الأشهر أو يدوي بالكامل) */
+export const PaymentScheduleSource = {
+  Auto: 1,
+  Manual: 2,
+} as const
+export type PaymentScheduleSource =
+  (typeof PaymentScheduleSource)[keyof typeof PaymentScheduleSource]
 
 /** نطاق خطة الأسعار (توافق قديم) */
 export const PricePlanScope = {
@@ -789,6 +805,13 @@ export interface Reservation {
   customerId: string
   complexId: string
   notes?: string | null
+  unitPrice?: number | null
+  pricePerMeter?: number | null
+  reservationPercent?: number | null
+  consultantName?: string | null
+  customerName?: string | null
+  customerPhone?: string | null
+  unitNumber?: string | null
   createdAt: string
 }
 
@@ -801,6 +824,10 @@ export interface CreateReservationDto {
   customerId: string
   complexId: string
   notes?: string | null
+  unitPrice?: number | null
+  pricePerMeter?: number | null
+  reservationPercent?: number | null
+  consultantName?: string | null
 }
 
 export type UpdateReservationDto = CreateReservationDto

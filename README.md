@@ -17,7 +17,7 @@ npm run dev
 ## الإعدادات
 
 - محلي (`npm run dev`) → `.env.development`  
-  `VITE_API_BASE_URL=https://pmsaas-api.execute-iq.com`
+  `VITE_API_PROXY_TARGET=https://apicomplex.solidcode-iq.com`
 - إنتاج (`npm run build`) → `.env.production`  
   `VITE_API_BASE_URL=https://apicomplex.solidcode-iq.com`
 

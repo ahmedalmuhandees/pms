@@ -12,6 +12,7 @@ import {
   ContractStatus,
   ContractType,
   ContractPaymentType,
+  PaymentScheduleSource,
   PricingMode,
   PricePlanScope,
   PricePlanPricingType,
@@ -161,11 +162,16 @@ export const maintenanceCategoryOptions = [
 ]
 
 export const reservationStatusOptions = [
-  { value: ReservationStatus.Pending, label: 'قيد الانتظار' },
+  { value: ReservationStatus.Pending, label: 'غير مؤكد' },
   { value: ReservationStatus.Confirmed, label: 'مؤكد' },
+  { value: ReservationStatus.Cancelled, label: 'إلغاء الحجز' },
   { value: ReservationStatus.Expired, label: 'منتهي' },
-  { value: ReservationStatus.Cancelled, label: 'ملغى' },
   { value: ReservationStatus.Converted, label: 'محوّل لعقد' },
+]
+
+export const salesCommissionSourceOptions = [
+  { value: 1, label: 'من العقود' },
+  { value: 2, label: 'من الحجوزات' },
 ]
 
 export const contractStatusOptions = [
@@ -191,6 +197,23 @@ export const pricingModeOptions = [
   { value: PricingMode.Manual, label: 'يدوي' },
   { value: PricingMode.System, label: 'من خطة الأسعار' },
   { value: PricingMode.CustomSchedule, label: 'تغيير اماكن الدفعات' },
+]
+
+export const paymentScheduleSourceOptions = [
+  {
+    value: PaymentScheduleSource.Auto,
+    label: 'تلقائي — حسب السنوات والأشهر',
+  },
+  {
+    value: PaymentScheduleSource.Manual,
+    label: 'يدوي — تعيين الدفعات بالتفاصيل',
+  },
+]
+
+export const paymentScheduleKindOptions = [
+  { value: 0, label: 'دفعة / قسط' },
+  { value: 1, label: 'استلام' },
+  { value: 2, label: 'مقدمة' },
 ]
 
 export const pricePlanScopeOptions = [

@@ -1,12 +1,14 @@
 import { apiClient, unwrap } from './client'
-import type { ApiResponse, PagedResult, PaginationParams } from '@/types'
+import type { ApiResponse, PagedResult, PaginationParams, SalesCommissionSource } from '@/types'
 
 export interface SalesCommission {
   id: string
   receiptNumber: string
   receiptDate: string
-  salesContractId: string
+  source: SalesCommissionSource
+  salesContractId?: string | null
   contractNumber?: string | null
+  reservationId?: string | null
   customerName: string
   customerPhone?: string | null
   unitNumber?: string | null
@@ -16,6 +18,7 @@ export interface SalesCommission {
   description: string
   consultantName?: string | null
   accountantName: string
+  showRefundDisclaimer?: boolean
   complexId: string
   complexName?: string | null
   createdAt: string
@@ -29,6 +32,19 @@ export interface SalesCommissionContractLookup {
   unitNumber?: string | null
   sellingPrice: number
   complexId: string
+  consultantName?: string | null
+}
+
+export interface SalesCommissionReservationLookup {
+  id: string
+  reservationDate: string
+  customerName: string
+  customerPhone?: string | null
+  unitNumber?: string | null
+  sellingPrice: number
+  reservationAmount: number
+  consultantName?: string | null
+  complexId: string
 }
 
 export interface SalesCommissionParams extends PaginationParams {
@@ -39,13 +55,16 @@ export interface SalesCommissionParams extends PaginationParams {
 }
 
 export interface CreateSalesCommissionPayload {
-  salesContractId: string
+  source: SalesCommissionSource
+  salesContractId?: string | null
+  reservationId?: string | null
   complexId: string
   receiptDate?: string | null
   commissionPercent: number
   commissionAmount?: number | null
   description?: string | null
   consultantName?: string | null
+  showRefundDisclaimer?: boolean
 }
 
 export async function getSalesCommissions(params?: SalesCommissionParams) {
@@ -63,6 +82,14 @@ export async function getSalesCommission(id: string) {
 export async function lookupSalesCommissionContracts(complexId: string, search?: string) {
   const res = await apiClient.get<ApiResponse<SalesCommissionContractLookup[]>>(
     '/api/SalesCommissions/contracts',
+    { params: { complexId, search } },
+  )
+  return unwrap(res)
+}
+
+export async function lookupSalesCommissionReservations(complexId: string, search?: string) {
+  const res = await apiClient.get<ApiResponse<SalesCommissionReservationLookup[]>>(
+    '/api/SalesCommissions/reservations',
     { params: { complexId, search } },
   )
   return unwrap(res)

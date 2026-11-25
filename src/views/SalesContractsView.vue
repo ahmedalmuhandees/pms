@@ -33,6 +33,7 @@ import {
   ContractStatus,
   ContractType,
   InstallmentStatus,
+  PaymentScheduleSource,
   PricePlanPricingType,
   PricePlanScheduleKind,
   PricingMode,
@@ -67,6 +68,7 @@ import {
   installmentStatusLabel,
   labelOf,
   pricePlanPricingTypeOptions,
+  paymentScheduleKindOptions,
   pricingModeOptions,
   unitStatusOptions,
 } from '@/utils/enums'
@@ -461,9 +463,16 @@ const meterPriceUsd = computed(() => {
   return Math.round((meterIqd / rate) * 100) / 100
 })
 
+/** سعر البيع بعد الخصم — أساس المقدمة والاستلام والجدول والمتبقي */
+const netSellingPrice = computed(() => {
+  const gross = Math.round(Number(form.sellingPrice || 0))
+  const disc = Math.round(Number(form.discount || 0))
+  return Math.max(0, gross - disc)
+})
+
 const totalPriceUsd = computed(() => {
   const rate = Number(form.exchangeRateUsd || 0)
-  const selling = Number(form.sellingPrice || 0)
+  const selling = netSellingPrice.value
   if (rate <= 0 || selling <= 0) return 0
   return Math.round((selling / rate) * 100) / 100
 })
@@ -508,16 +517,44 @@ function applyUsdMeterPricingFromUnit() {
           ...r,
           amount:
             r.kind === PricePlanScheduleKind.Delivery
-              ? Number(form.deliveryAmount || 0)
-              : Number(form.downPayment || 0),
+              ? deliveryAmountValue.value
+              : downPaymentAmount.value,
+          percent: isPercentage.value
+            ? Math.round(
+                (r.kind === PricePlanScheduleKind.Delivery
+                  ? form.deliveryAmount || 0
+                  : form.downPayment || 0) * 100,
+              ) / 100
+            : netSellingPrice.value
+              ? Math.round(
+                  ((r.kind === PricePlanScheduleKind.Delivery
+                    ? deliveryAmountValue.value
+                    : downPaymentAmount.value) /
+                    netSellingPrice.value) *
+                    10000,
+                ) / 100
+              : 0,
         }
       }
+      if (isPercentage.value) {
+        const percent = Math.round((Number(r.percent) || 0) * 100) / 100
+        const netAfter = Math.max(0, next - Math.round(Number(form.discount || 0)))
+        return {
+          ...r,
+          percent,
+          amount: Math.round(((netAfter || 0) * percent) / 100),
+        }
+      }
+      const netAfter = Math.max(0, next - Math.round(Number(form.discount || 0)))
       return {
         ...r,
         amount: Math.round(Number(r.amount || 0) * ratio),
+        percent: netAfter
+          ? Math.round((Math.round(Number(r.amount || 0) * ratio) / netAfter) * 10000) / 100
+          : 0,
       }
     })
-    if (isCustomSchedulePricing.value) syncSpecialScheduleAmounts()
+    if (isCustomSchedulePricing.value) refreshCustomScheduleAmounts()
   }
   if (downPaymentRows.value.length) {
     downPaymentRows.value = downPaymentRows.value.map((r) => ({
@@ -536,6 +573,8 @@ const installmentRows = ref<PricePlanInstallmentItem[]>([])
 const downPaymentScheduleEnabled = ref(false)
 const downPaymentRows = ref<ContractDownPaymentScheduleItem[]>([])
 const suppressScheduleRebuild = ref(false)
+/** مصدر تقسيم الدفعات: تلقائي (سنوات/أشهر) أو يدوي بالكامل */
+const scheduleSource = ref<PaymentScheduleSource>(PaymentScheduleSource.Auto)
 
 const activeContractDesign = computed(() => {
   if (form.contractDesignId) {
@@ -561,15 +600,22 @@ const isCashInstallments = computed(
 )
 const usesInstallments = computed(() => isBank.value || isCashInstallments.value)
 const isSystemPricing = computed(() => pricingModeValue.value === PricingMode.System)
-const isManualPricing = computed(() => pricingModeValue.value === PricingMode.Manual)
+const isManualPricing = computed(
+  () =>
+    pricingModeValue.value === PricingMode.Manual
+    || pricingModeValue.value === PricingMode.CustomSchedule,
+)
+/** تغيير اماكن الدفعات — من مصدر التسعير (CustomSchedule) أو مصدر التقسيم اليدوي */
 const isCustomSchedulePricing = computed(
-  () => pricingModeValue.value === PricingMode.CustomSchedule,
+  () =>
+    pricingModeValue.value === PricingMode.CustomSchedule
+    || scheduleSource.value === PaymentScheduleSource.Manual,
 )
-/** تسعير قابل للتحرير يدوياً (يدوي أو تغيير أماكن الدفعات) */
-const isEditablePricing = computed(
-  () => isManualPricing.value || isCustomSchedulePricing.value,
+/** حقول التسعير قابلة للتحرير (ليس من خطة الأسعار) */
+const isEditablePricing = computed(() => !isSystemPricing.value)
+const isPercentage = computed(
+  () => Number(pricingType.value) === PricePlanPricingType.Percentage,
 )
-const isPercentage = computed(() => pricingType.value === PricePlanPricingType.Percentage)
 
 const selectedPricePlan = computed(
   () => pricePlans.value.find((p) => p.id === form.pricePlanId) ?? null,
@@ -626,22 +672,22 @@ function resolvePlanUnitIds(plan: PricePlan): Set<string> {
 
 const downPaymentAmount = computed(() => {
   if (isEditablePricing.value && isPercentage.value) {
-    return Math.round(((form.sellingPrice || 0) * (form.downPayment || 0)) / 100)
+    return Math.round(((netSellingPrice.value || 0) * (form.downPayment || 0)) / 100)
   }
   return Math.round(form.downPayment || 0)
 })
 
 const deliveryAmountValue = computed(() => {
   if (isEditablePricing.value && isPercentage.value) {
-    return Math.round(((form.sellingPrice || 0) * (form.deliveryAmount || 0)) / 100)
+    return Math.round(((netSellingPrice.value || 0) * (form.deliveryAmount || 0)) / 100)
   }
   return Math.round(form.deliveryAmount || 0)
 })
 
-/** RemainingAmount = SellingPrice - FinancedAmount - DownPayment - DeliveryAmount */
+/** RemainingAmount = (SellingPrice − Discount) − FinancedAmount − DownPayment − DeliveryAmount */
 const computedRemaining = computed(() => {
   const financed = isBank.value ? form.financedAmount || 0 : 0
-  return (form.sellingPrice || 0) - financed - downPaymentAmount.value - deliveryAmountValue.value
+  return netSellingPrice.value - financed - downPaymentAmount.value - deliveryAmountValue.value
 })
 
 /** المتبقي > 0 فقط يحتاج سنوات/فترة/جدول أقساط */
@@ -684,8 +730,8 @@ const remainingPercent = computed(() => {
   if (isEditablePricing.value && isPercentage.value) {
     return Math.round((100 - (form.downPayment || 0) - (form.deliveryAmount || 0)) * 100) / 100
   }
-  if (!form.sellingPrice) return 0
-  return Math.round((computedRemaining.value / form.sellingPrice) * 10000) / 100
+  if (!netSellingPrice.value) return 0
+  return Math.round((computedRemaining.value / netSellingPrice.value) * 10000) / 100
 })
 
 const installmentOnlyRows = computed(() =>
@@ -722,8 +768,12 @@ const scheduleSumPercent = computed(
 )
 
 const scheduleMatchesRemaining = computed(() => {
-  if (!computedInstallmentCount.value) return false
-  if (installmentOnlyRows.value.length !== computedInstallmentCount.value) return false
+  if (installmentOnlyRows.value.length === 0) return false
+  // اليدوي: يكفي تطابق المجموع — لا يُشترط عدد صفوف = السنوات/الأشهر
+  if (!isCustomSchedulePricing.value) {
+    if (!computedInstallmentCount.value) return false
+    if (installmentOnlyRows.value.length !== computedInstallmentCount.value) return false
+  }
   if (isPercentage.value) {
     return Math.abs(scheduleSumPercent.value - remainingPercent.value) <= 0.01
   }
@@ -754,6 +804,68 @@ function monthsBetween(from: Date, to: Date) {
   )
 }
 
+function gcd(a: number, b: number): number {
+  let x = Math.abs(Math.round(a))
+  let y = Math.abs(Math.round(b))
+  while (y) {
+    const t = y
+    y = x % y
+    x = t
+  }
+  return x || 1
+}
+
+/** حساب السنوات (والفترة إن أمكن) من أشهر/تواريخ جدول «تغيير اماكن الدفعات» */
+function syncYearsFromCustomSchedule() {
+  if (!isCustomSchedulePricing.value) return
+  const rows = installmentRows.value
+  if (!rows.length) {
+    if (!form.years || form.years < 1) form.years = 1
+    return
+  }
+
+  const start = firstInstallmentDateModel.value
+  let maxOffset = 0
+  let minOffset = Number.POSITIVE_INFINITY
+
+  for (const row of rows) {
+    let offset = row.monthOffset
+    if ((offset == null || Number.isNaN(Number(offset))) && row.dueDate) {
+      const due = new Date(row.dueDate)
+      offset = start && !Number.isNaN(due.getTime()) ? monthsBetween(start, due) : 0
+    }
+    offset = Math.max(0, Math.round(Number(offset) || 0))
+    row.monthOffset = offset
+    maxOffset = Math.max(maxOffset, offset)
+    minOffset = Math.min(minOffset, offset)
+  }
+  if (!Number.isFinite(minOffset)) minOffset = 0
+
+  const spanMonths = Math.max(0, maxOffset - minOffset)
+  form.years = Math.max(1, Math.min(40, Math.ceil(spanMonths / 12) || 1))
+
+  const offsets = [
+    ...new Set(
+      installmentOnlyRows.value.map((r) => Math.max(0, Math.round(r.monthOffset || 0))),
+    ),
+  ].sort((a, b) => a - b)
+  if (offsets.length >= 2) {
+    const gaps: number[] = []
+    for (let i = 1; i < offsets.length; i++) {
+      const gap = offsets[i]! - offsets[i - 1]!
+      if (gap > 0) gaps.push(gap)
+    }
+    if (gaps.length) {
+      const period = gaps.reduce((a, b) => gcd(a, b), gaps[0]!)
+      if (period >= 1 && period <= 12) {
+        form.paymentIntervalMonths = period
+      }
+    }
+  } else if (!form.paymentIntervalMonths || form.paymentIntervalMonths < 1) {
+    form.paymentIntervalMonths = 1
+  }
+}
+
 function installmentArabicName(n: number) {
   const names = [
     'الدفعة الاولى',
@@ -768,14 +880,43 @@ function installmentArabicName(n: number) {
     'الدفعة العاشرة',
     'الدفعة الحادية عشرة',
     'الدفعة الثانية عشرة',
+    'الدفعة الثالثة عشرة',
+    'الدفعة الرابعة عشرة',
+    'الدفعة الخامسة عشرة',
+    'الدفعة السادسة عشرة',
+    'الدفعة السابعة عشرة',
+    'الدفعة الثامنة عشرة',
+    'الدفعة التاسعة عشرة',
+    'الدفعة العشرون',
+    'الدفعة الحادية والعشرون',
+    'الدفعة الثانية والعشرون',
+    'الدفعة الثالثة والعشرون',
+    'الدفعة الرابعة والعشرون',
   ]
   return names[n - 1] || `الدفعة ${n}`
 }
 
-function kindLabel(kind?: number | null) {
-  if (kind === PricePlanScheduleKind.Delivery) return 'استلام'
-  if (kind === PricePlanScheduleKind.DownPayment) return 'مقدمة'
-  return 'دفعة'
+/** اسم افتراضي لم يُعدّله المستخدم (فارغ أو من سلسلة التسمية التلقائية) */
+function isDefaultInstallmentName(name?: string | null) {
+  const t = name?.trim()
+  if (!t) return true
+  for (let i = 1; i <= 60; i++) {
+    if (t === installmentArabicName(i)) return true
+  }
+  return false
+}
+
+/** إعادة ترقيم أسماء الدفعات الافتراضية فقط — الأسماء المعدّلة يدوياً تُحفظ */
+function renumberDefaultInstallmentNames() {
+  let n = 0
+  for (const row of installmentRows.value) {
+    const kind = row.kind ?? PricePlanScheduleKind.Installment
+    if (kind !== PricePlanScheduleKind.Installment) continue
+    n++
+    if (isDefaultInstallmentName(row.name)) {
+      row.name = installmentArabicName(n)
+    }
+  }
 }
 
 function reindexSchedule() {
@@ -790,20 +931,68 @@ function syncSpecialScheduleAmounts() {
       row.amount = deliveryAmountValue.value
       row.percent = isPercentage.value
         ? Math.round((form.deliveryAmount || 0) * 100) / 100
-        : form.sellingPrice
-          ? Math.round((deliveryAmountValue.value / form.sellingPrice) * 10000) / 100
+        : netSellingPrice.value
+          ? Math.round((deliveryAmountValue.value / netSellingPrice.value) * 10000) / 100
           : 0
       row.name = row.name || 'الاستلام'
     } else if (row.kind === PricePlanScheduleKind.DownPayment) {
       row.amount = downPaymentAmount.value
       row.percent = isPercentage.value
         ? Math.round((form.downPayment || 0) * 100) / 100
-        : form.sellingPrice
-          ? Math.round((downPaymentAmount.value / form.sellingPrice) * 10000) / 100
+        : netSellingPrice.value
+          ? Math.round((downPaymentAmount.value / netSellingPrice.value) * 10000) / 100
           : 0
       row.name = row.name || 'دفعة المقدمة'
     }
   }
+}
+
+/** مزامنة مبالغ صفوف الأقساط من النسب عند وضع النسبة */
+function syncInstallmentAmountsFromPercents() {
+  if (!isPercentage.value) return
+  const price = netSellingPrice.value || 0
+  for (const row of installmentRows.value) {
+    const kind = row.kind ?? PricePlanScheduleKind.Installment
+    if (
+      kind === PricePlanScheduleKind.Delivery
+      || kind === PricePlanScheduleKind.DownPayment
+    ) {
+      continue
+    }
+    row.percent = Math.round((Number(row.percent) || 0) * 100) / 100
+    row.amount = Math.round((price * row.percent) / 100)
+  }
+}
+
+function refreshCustomScheduleAmounts() {
+  if (!isCustomSchedulePricing.value) return
+  syncSpecialScheduleAmounts()
+  syncInstallmentAmountsFromPercents()
+}
+
+function onPricingTypeChange() {
+  pricingType.value = Number(pricingType.value) as PricePlanPricingType
+  if (!isCustomSchedulePricing.value) {
+    if (usesInstallments.value) rebuildInstallmentSchedule()
+    return
+  }
+  // عند التحويل لنسبة: احسب النسب من المبالغ الحالية ثم ثبّت المبالغ من المعادلة
+  if (isPercentage.value) {
+    const price = netSellingPrice.value || 0
+    for (const row of installmentRows.value) {
+      const kind = row.kind ?? PricePlanScheduleKind.Installment
+      if (
+        kind === PricePlanScheduleKind.Delivery
+        || kind === PricePlanScheduleKind.DownPayment
+      ) {
+        continue
+      }
+      if (price > 0 && !(row.percent > 0) && (row.amount || 0) > 0) {
+        row.percent = Math.round(((row.amount || 0) / price) * 10000) / 100
+      }
+    }
+  }
+  refreshCustomScheduleAmounts()
 }
 
 function moveScheduleRow(index: number, direction: -1 | 1) {
@@ -814,6 +1003,100 @@ function moveScheduleRow(index: number, direction: -1 | 1) {
   copy.splice(target, 0, item)
   installmentRows.value = copy
   reindexSchedule()
+  renumberDefaultInstallmentNames()
+  syncYearsFromCustomSchedule()
+}
+
+function addManualScheduleRow(kind: number = PricePlanScheduleKind.Installment) {
+  const resolvedKind = Number(kind)
+  const start = firstInstallmentDateModel.value || new Date()
+  const lastOffset = installmentRows.value.length
+    ? Math.max(...installmentRows.value.map((r) => r.monthOffset || 0)) + (form.paymentIntervalMonths || 1)
+    : 0
+  const installmentCount =
+    installmentRows.value.filter(
+      (r) => (r.kind ?? PricePlanScheduleKind.Installment) === PricePlanScheduleKind.Installment,
+    ).length + (resolvedKind === PricePlanScheduleKind.Installment ? 1 : 0)
+  const name =
+    resolvedKind === PricePlanScheduleKind.Delivery
+      ? 'الاستلام'
+      : resolvedKind === PricePlanScheduleKind.DownPayment
+        ? 'دفعة المقدمة'
+        : installmentArabicName(Math.max(installmentCount, 1))
+  let percent = 0
+  let amount = 0
+  if (resolvedKind === PricePlanScheduleKind.Delivery) {
+    amount = deliveryAmountValue.value
+    percent = isPercentage.value
+      ? Math.round((form.deliveryAmount || 0) * 100) / 100
+      : netSellingPrice.value
+        ? Math.round((amount / netSellingPrice.value) * 10000) / 100
+        : 0
+  } else if (resolvedKind === PricePlanScheduleKind.DownPayment) {
+    amount = downPaymentAmount.value
+    percent = isPercentage.value
+      ? Math.round((form.downPayment || 0) * 100) / 100
+      : netSellingPrice.value
+        ? Math.round((amount / netSellingPrice.value) * 10000) / 100
+        : 0
+  } else if (isPercentage.value) {
+    const used = Math.round(
+      installmentOnlyRows.value.reduce((s, r) => s + (r.percent || 0), 0) * 100,
+    ) / 100
+    percent = Math.max(0, Math.round((remainingPercent.value - used) * 100) / 100)
+    amount = Math.round(((netSellingPrice.value || 0) * percent) / 100)
+  }
+  const row: PricePlanInstallmentItem = {
+    index: installmentRows.value.length + 1,
+    kind: resolvedKind,
+    name,
+    monthOffset: lastOffset,
+    dueDate: addMonths(start, lastOffset).toISOString(),
+    amount,
+    percent,
+  }
+  installmentRows.value = [...installmentRows.value, row]
+  reindexSchedule()
+  if (resolvedKind === PricePlanScheduleKind.Installment) {
+    renumberDefaultInstallmentNames()
+  } else {
+    syncSpecialScheduleAmounts()
+  }
+  syncYearsFromCustomSchedule()
+}
+
+function removeManualScheduleRow(index: number) {
+  if (index < 0 || index >= installmentRows.value.length) return
+  installmentRows.value = installmentRows.value.filter((_, i) => i !== index)
+  reindexSchedule()
+  renumberDefaultInstallmentNames()
+  syncYearsFromCustomSchedule()
+}
+
+function onManualKindChange(row: PricePlanInstallmentItem) {
+  const kind = Number(row.kind ?? PricePlanScheduleKind.Installment)
+  row.kind = kind
+  if (kind === PricePlanScheduleKind.Delivery) {
+    if (!row.name?.trim() || isDefaultInstallmentName(row.name) || row.name === 'دفعة المقدمة') {
+      row.name = 'الاستلام'
+    }
+    syncSpecialScheduleAmounts()
+  } else if (kind === PricePlanScheduleKind.DownPayment) {
+    if (!row.name?.trim() || isDefaultInstallmentName(row.name) || row.name === 'الاستلام') {
+      row.name = 'دفعة المقدمة'
+    }
+    syncSpecialScheduleAmounts()
+  } else {
+    if (
+      !row.name?.trim()
+      || row.name === 'الاستلام'
+      || row.name === 'دفعة المقدمة'
+      || isDefaultInstallmentName(row.name)
+    ) {
+      row.name = installmentArabicName(1)
+    }
+    renumberDefaultInstallmentNames()
+  }
 }
 
 function onMonthOffsetEdit(row: PricePlanInstallmentItem) {
@@ -821,6 +1104,7 @@ function onMonthOffsetEdit(row: PricePlanInstallmentItem) {
   const offset = Math.max(0, Math.round(row.monthOffset || 0))
   row.monthOffset = offset
   row.dueDate = addMonths(start, offset).toISOString()
+  syncYearsFromCustomSchedule()
 }
 
 function onDueDateEdit(row: PricePlanInstallmentItem, value: Date | null) {
@@ -828,6 +1112,7 @@ function onDueDateEdit(row: PricePlanInstallmentItem, value: Date | null) {
   const start = firstInstallmentDateModel.value || new Date()
   row.dueDate = value.toISOString()
   row.monthOffset = Math.max(0, monthsBetween(start, value))
+  syncYearsFromCustomSchedule()
 }
 
 function rebuildDownPaymentSchedule(count = Math.max(downPaymentRows.value.length, 2)) {
@@ -899,8 +1184,8 @@ function rebuildInstallmentSchedule() {
         amount: deliveryAmountValue.value,
         percent: isPercentage.value
           ? Math.round((form.deliveryAmount || 0) * 100) / 100
-          : form.sellingPrice
-            ? Math.round((deliveryAmountValue.value / form.sellingPrice) * 10000) / 100
+          : netSellingPrice.value
+            ? Math.round((deliveryAmountValue.value / netSellingPrice.value) * 10000) / 100
             : 0,
       })
     }
@@ -914,7 +1199,7 @@ function rebuildInstallmentSchedule() {
             ? Math.round((remainingPercent.value - allocated) * 100) / 100
             : base
         allocated = Math.round((allocated + percent) * 100) / 100
-        const amount = Math.round(((form.sellingPrice || 0) * percent) / 100)
+        const amount = Math.round(((netSellingPrice.value || 0) * percent) / 100)
         const monthOffset = interval * i
         rows.push({
           index: rows.length + 1,
@@ -933,8 +1218,8 @@ function rebuildInstallmentSchedule() {
       for (let i = 0; i < count; i++) {
         const amount = i === count - 1 ? remaining - allocated : base
         allocated += amount
-        const percent = form.sellingPrice
-          ? Math.round((amount / form.sellingPrice) * 10000) / 100
+        const percent = netSellingPrice.value
+          ? Math.round((amount / netSellingPrice.value) * 10000) / 100
           : 0
         const monthOffset = interval * i
         rows.push({
@@ -962,14 +1247,15 @@ function rebuildInstallmentSchedule() {
         amount: downPaymentAmount.value,
         percent: isPercentage.value
           ? Math.round((form.downPayment || 0) * 100) / 100
-          : form.sellingPrice
-            ? Math.round((downPaymentAmount.value / form.sellingPrice) * 10000) / 100
+          : netSellingPrice.value
+            ? Math.round((downPaymentAmount.value / netSellingPrice.value) * 10000) / 100
             : 0,
       })
     }
 
     installmentRows.value = rows
     reindexSchedule()
+    syncYearsFromCustomSchedule()
     return
   }
 
@@ -983,10 +1269,11 @@ function rebuildInstallmentSchedule() {
           ? Math.round((remainingPercent.value - allocated) * 100) / 100
           : base
       allocated = Math.round((allocated + percent) * 100) / 100
-      const amount = Math.round(((form.sellingPrice || 0) * percent) / 100)
+      const amount = Math.round(((netSellingPrice.value || 0) * percent) / 100)
       return {
         index: i + 1,
         kind: PricePlanScheduleKind.Installment,
+        name: installmentArabicName(i + 1),
         dueDate: addMonths(start, interval * i).toISOString(),
         monthOffset: interval * i,
         amount,
@@ -1002,12 +1289,13 @@ function rebuildInstallmentSchedule() {
   installmentRows.value = Array.from({ length: count }, (_, i) => {
     const amount = i === count - 1 ? remaining - allocated : base
     allocated += amount
-    const percent = form.sellingPrice
-      ? Math.round((amount / form.sellingPrice) * 10000) / 100
+    const percent = netSellingPrice.value
+      ? Math.round((amount / netSellingPrice.value) * 10000) / 100
       : 0
     return {
       index: i + 1,
       kind: PricePlanScheduleKind.Installment,
+      name: installmentArabicName(i + 1),
       dueDate: addMonths(start, interval * i).toISOString(),
       monthOffset: interval * i,
       amount,
@@ -1025,8 +1313,8 @@ function onInstallmentAmountEdit(row: PricePlanInstallmentItem) {
     return
   }
   row.amount = Math.round(row.amount || 0)
-  row.percent = form.sellingPrice
-    ? Math.round((row.amount / form.sellingPrice) * 10000) / 100
+  row.percent = netSellingPrice.value
+    ? Math.round((row.amount / netSellingPrice.value) * 10000) / 100
     : 0
 }
 
@@ -1039,7 +1327,7 @@ function onInstallmentPercentEdit(row: PricePlanInstallmentItem) {
     return
   }
   row.percent = Math.round((row.percent || 0) * 100) / 100
-  row.amount = Math.round(((form.sellingPrice || 0) * row.percent) / 100)
+  row.amount = Math.round(((netSellingPrice.value || 0) * row.percent) / 100)
 }
 
 watch(
@@ -1050,6 +1338,7 @@ watch(
     needsInstallmentSchedule.value,
     pricingType.value,
     form.sellingPrice,
+    form.discount,
     form.downPayment,
     form.deliveryAmount,
     form.financedAmount,
@@ -1059,6 +1348,11 @@ watch(
   ],
   () => {
     if (suppressScheduleRebuild.value) return
+    // في الوضع اليدوي لا نُعد بناء الجدول تلقائياً (إلا مزامنة الاستلام/المقدمة)
+    if (isCustomSchedulePricing.value) {
+      refreshCustomScheduleAmounts()
+      return
+    }
     rebuildInstallmentSchedule()
   },
 )
@@ -1195,8 +1489,9 @@ function applyPricePlan(planId: string | null | undefined) {
   form.registrationFee = plan.registrationFee
   pricingType.value = plan.pricingType ?? PricePlanPricingType.Amount
   if (plan.pricingType === PricePlanPricingType.Percentage) {
-    form.downPayment = Math.round((plan.sellingPrice * (plan.downPayment || 0)) / 100)
-    form.deliveryAmount = Math.round((plan.sellingPrice * (plan.deliveryAmount || 0)) / 100)
+    const netPlan = Math.max(0, Math.round((plan.sellingPrice || 0) - (plan.discount || 0)))
+    form.downPayment = Math.round((netPlan * (plan.downPayment || 0)) / 100)
+    form.deliveryAmount = Math.round((netPlan * (plan.deliveryAmount || 0)) / 100)
   } else {
     form.downPayment = plan.downPayment || 0
     form.deliveryAmount = plan.deliveryAmount || 0
@@ -1268,29 +1563,32 @@ function onPricingModeChange() {
   // ثبّت القيمة رقمياً حتى لا تفشل المقارنات مع Select
   form.pricingMode = Number(form.pricingMode) as typeof form.pricingMode
 
+  if (pricingModeValue.value === PricingMode.CustomSchedule) {
+    scheduleSource.value = PaymentScheduleSource.Manual
+    if (isCash.value) {
+      form.contractPaymentType = ContractPaymentType.CashInstallments
+      onPaymentTypeChange()
+      return
+    }
+  } else if (scheduleSource.value === PaymentScheduleSource.Manual) {
+    scheduleSource.value = PaymentScheduleSource.Auto
+  }
+
   if (isSystemPricing.value) {
     applyPricePlan(form.pricePlanId)
     return
   }
   form.pricePlanId = null
-  if (!isCustomSchedulePricing.value) {
-    pricingType.value = PricePlanPricingType.Amount
-  }
-
-  if (isCustomSchedulePricing.value) {
-    // الجدول يحتاج أقساط — حوّل الكاش إلى كاش أقساط إن لزم
-    if (isCash.value) {
-      form.contractPaymentType = ContractPaymentType.CashInstallments
-    }
-    ensureInstallmentDefaults()
-    rebuildInstallmentSchedule()
-    return
-  }
+  pricingType.value = PricePlanPricingType.Amount
 
   if (usesInstallments.value) {
     ensureInstallmentDefaults()
   }
-  rebuildInstallmentSchedule()
+  if (pricingModeValue.value === PricingMode.CustomSchedule) {
+    if (!installmentRows.value.length) rebuildInstallmentSchedule()
+  } else {
+    rebuildInstallmentSchedule()
+  }
 }
 
 function onPaymentTypeChange() {
@@ -1303,6 +1601,7 @@ function onPaymentTypeChange() {
     form.financedAmount = 0
     firstInstallmentDateModel.value = null
     installmentRows.value = []
+    scheduleSource.value = PaymentScheduleSource.Auto
     return
   }
 
@@ -1328,6 +1627,7 @@ function openCreate(unit?: Unit | SalesTableRow | null) {
   firstInstallmentDateModel.value = null
   contractDateModel.value = null
   pricingType.value = PricePlanPricingType.Amount
+  scheduleSource.value = PaymentScheduleSource.Auto
   installmentRows.value = []
   downPaymentScheduleEnabled.value = false
   downPaymentRows.value = []
@@ -1360,10 +1660,16 @@ async function openEdit(row: SalesContract | SalesTableRow) {
   firstInstallmentDateModel.value = parseContractDate(contract.firstInstallmentDate)
   contractDateModel.value = parseContractDate(contract.contractDate)
   pricingType.value = PricePlanPricingType.Amount
+  const loadedMode = contract.pricingMode ?? PricingMode.Manual
+  scheduleSource.value =
+    loadedMode === PricingMode.CustomSchedule || (contract.paymentSchedule?.length ?? 0) > 0
+      ? PaymentScheduleSource.Manual
+      : PaymentScheduleSource.Auto
+
   Object.assign(form, {
     contractType: contract.contractType ?? ContractType.Sale,
     contractPaymentType: contract.contractPaymentType ?? ContractPaymentType.Cash,
-    pricingMode: contract.pricingMode ?? PricingMode.Manual,
+    pricingMode: loadedMode,
     pricePlanId: contract.pricePlanId,
     contractDesignId: contract.contractDesignId ?? null,
     exchangeRateUsd: contract.exchangeRateUsd ?? null,
@@ -1402,6 +1708,9 @@ async function openEdit(row: SalesContract | SalesTableRow) {
   } catch {
     /* استخدم الأقساط من الصف إن وُجدت */
   }
+  if (savedPaymentSchedule?.length) {
+    scheduleSource.value = PaymentScheduleSource.Manual
+  }
 
   const activeInstallments = (existingInstallments || []).filter(
     (i) => !('status' in i) || i.status !== InstallmentStatus.Cancelled,
@@ -1410,7 +1719,7 @@ async function openEdit(row: SalesContract | SalesTableRow) {
     (i) => !('status' in i) || (i as Installment).status !== InstallmentStatus.Cancelled,
   )
 
-  if (form.pricingMode === PricingMode.CustomSchedule) {
+  if (scheduleSource.value === PaymentScheduleSource.Manual) {
     const start = firstInstallmentDateModel.value || new Date()
     if (savedPaymentSchedule?.length) {
       installmentRows.value = savedPaymentSchedule.map((r, i) => {
@@ -1432,10 +1741,11 @@ async function openEdit(row: SalesContract | SalesTableRow) {
           amount,
           percent:
             r.percent ??
-            (form.sellingPrice ? Math.round((amount / form.sellingPrice) * 10000) / 100 : 0),
+            (netSellingPrice.value ? Math.round((amount / netSellingPrice.value) * 10000) / 100 : 0),
         }
       })
       reindexSchedule()
+      syncYearsFromCustomSchedule()
       downPaymentScheduleEnabled.value = false
       downPaymentRows.value = []
     } else {
@@ -1448,8 +1758,8 @@ async function openEdit(row: SalesContract | SalesTableRow) {
         monthOffset: 0,
         dueDate: deliveryDateModel.value?.toISOString() || addMonths(start, 0).toISOString(),
         amount: deliveryAmountValue.value,
-        percent: form.sellingPrice
-          ? Math.round((deliveryAmountValue.value / form.sellingPrice) * 10000) / 100
+        percent: netSellingPrice.value
+          ? Math.round((deliveryAmountValue.value / netSellingPrice.value) * 10000) / 100
           : 0,
       })
     }
@@ -1466,8 +1776,8 @@ async function openEdit(row: SalesContract | SalesTableRow) {
           monthOffset: monthsBetween(start, due),
           dueDate: due.toISOString(),
           amount,
-          percent: form.sellingPrice
-            ? Math.round((amount / form.sellingPrice) * 10000) / 100
+          percent: netSellingPrice.value
+            ? Math.round((amount / netSellingPrice.value) * 10000) / 100
             : 0,
         })
       })
@@ -1482,14 +1792,17 @@ async function openEdit(row: SalesContract | SalesTableRow) {
         monthOffset: monthsBetween(start, downDue),
         dueDate: downDue.toISOString(),
         amount: downPaymentAmount.value,
-        percent: form.sellingPrice
-          ? Math.round((downPaymentAmount.value / form.sellingPrice) * 10000) / 100
+        percent: netSellingPrice.value
+          ? Math.round((downPaymentAmount.value / netSellingPrice.value) * 10000) / 100
           : 0,
       })
     }
     installmentRows.value = rows.length ? rows : []
     if (!rows.length) rebuildInstallmentSchedule()
-    else reindexSchedule()
+    else {
+      reindexSchedule()
+      syncYearsFromCustomSchedule()
+    }
     downPaymentScheduleEnabled.value = false
     downPaymentRows.value = []
     }
@@ -1499,8 +1812,8 @@ async function openEdit(row: SalesContract | SalesTableRow) {
       .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))
       .map((i, idx) => {
         const amount = Math.round(i.amount || 0)
-        const percent = form.sellingPrice
-          ? Math.round((amount / form.sellingPrice) * 10000) / 100
+        const percent = netSellingPrice.value
+          ? Math.round((amount / netSellingPrice.value) * 10000) / 100
           : 0
         return {
           index: idx + 1,
@@ -1542,9 +1855,26 @@ async function openDetails(row: SalesContract | SalesTableRow) {
   }
 }
 
-function printContract(row: SalesContract | SalesTableRow) {
+async function printContract(row: SalesContract | SalesTableRow) {
   const contract = 'contract' in row ? row.contract : row
   if (!contract) return
+  const ALZHRAA = '08df2238-f846-4fa4-80c7-efd2f98b1109'
+  if ((contract.complexId || '').toLowerCase() === ALZHRAA) {
+    try {
+      const blob = await downloadSalesContractPdf(contract.id)
+      if (blob.type && blob.type.includes('json')) {
+        const text = await blob.text()
+        const parsed = JSON.parse(text)
+        throw new Error(parsed.message || 'فشل توليد ملف PDF')
+      }
+      const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    } catch (error) {
+      notify.error(getErrorMessage(error))
+    }
+    return
+  }
   const resolved = router.resolve({ name: 'sales-contract-print', params: { id: contract.id } })
   window.open(resolved.href, '_blank', 'noopener,noreferrer')
 }
@@ -1606,10 +1936,16 @@ function patchContractLocal(updated: SalesContract) {
 }
 
 function buildPayload(): CreateSalesContractDto {
+  const resolvedPricingMode = isSystemPricing.value
+    ? PricingMode.System
+    : isCustomSchedulePricing.value || pricingModeValue.value === PricingMode.CustomSchedule
+      ? PricingMode.CustomSchedule
+      : PricingMode.Manual
+
   const payload: CreateSalesContractDto = {
     contractType: form.contractType,
     contractPaymentType: form.contractPaymentType,
-    pricingMode: form.pricingMode,
+    pricingMode: resolvedPricingMode,
     pricePlanId: isSystemPricing.value ? form.pricePlanId : null,
     exchangeRateUsd: form.exchangeRateUsd ?? null,
     pricePerMeterUsd: form.pricePerMeterUsd ?? null,
@@ -1623,8 +1959,8 @@ function buildPayload(): CreateSalesContractDto {
     deliveryDate: deliveryDateModel.value?.toISOString() ?? null,
     financedAmount: isBank.value ? form.financedAmount : 0,
     bankName: isBank.value ? form.bankName : null,
-    years: usesInstallments.value ? form.years : null,
-    paymentIntervalMonths: usesInstallments.value ? form.paymentIntervalMonths : null,
+    years: needsInstallmentSchedule.value ? form.years : null,
+    paymentIntervalMonths: needsInstallmentSchedule.value ? form.paymentIntervalMonths : null,
     firstInstallmentDate: needsInstallmentSchedule.value
       ? toContractDatePayload(firstInstallmentDateModel.value)
       : null,
@@ -1741,6 +2077,14 @@ function validateForm() {
     notify.warning('المقدمة ومبلغ الاستلام يجب ألا تكون سالبة')
     return false
   }
+  if ((form.discount || 0) < 0) {
+    notify.warning('الخصم يجب ألا يكون سالباً')
+    return false
+  }
+  if ((form.discount || 0) > (form.sellingPrice || 0)) {
+    notify.warning('الخصم لا يمكن أن يتجاوز سعر البيع')
+    return false
+  }
   if (isEditablePricing.value && isPercentage.value && (form.downPayment || 0) + (form.deliveryAmount || 0) > 100) {
     notify.warning('النسبة لا يمكن أن تتجاوز 100٪')
     return false
@@ -1762,10 +2106,6 @@ function validateForm() {
     }
   }
   if (isCash.value) {
-    if (!deliveryDateModel.value) {
-      notify.warning('حدد تاريخ الاستلام للكاش')
-      return false
-    }
     return true
   }
   if (isBank.value && !form.bankName?.trim()) {
@@ -1776,6 +2116,13 @@ function validateForm() {
     notify.warning('مبلغ المصرف العقاري يجب أن يكون أكبر من صفر')
     return false
   }
+  // مقدمة + استلام فقط (المتبقي صفر) → بدون سنوات/أشهر/جدول أقساط
+  if (remainingIsZero.value) {
+    return true
+  }
+  if (isCustomSchedulePricing.value) {
+    syncYearsFromCustomSchedule()
+  }
   if (!form.years || form.years < 1) {
     notify.warning('عدد السنوات يجب أن يكون 1 على الأقل')
     return false
@@ -1784,13 +2131,12 @@ function validateForm() {
     notify.warning('حدد فترة الدفع بالأشهر')
     return false
   }
-  if ((form.years * 12) % form.paymentIntervalMonths !== 0) {
+  if (
+    !isCustomSchedulePricing.value
+    && (form.years * 12) % form.paymentIntervalMonths !== 0
+  ) {
     notify.warning('عدد الأشهر يجب أن يقبل القسمة على فترة الدفع بدون باقٍ')
     return false
-  }
-  // المتبقي صفر → حفظ السنوات/الأشهر بدون جدول أقساط
-  if (remainingIsZero.value) {
-    return true
   }
   if (!firstInstallmentDateModel.value) {
     notify.warning('حدد تاريخ أول قسط')
@@ -1802,7 +2148,7 @@ function validateForm() {
   ) {
     notify.warning(
       isCustomSchedulePricing.value
-        ? 'جدول الدفعات غير مكتمل — رتّب الصفوف أو أعد بناء الجدول'
+        ? 'جدول الدفعات اليدوي غير مكتمل أو مجموعه لا يطابق الباقي — أضف/عدّل الصفوف'
         : 'جدول الأقساط غير مكتمل — اضغط إعادة التوزيع',
     )
     return false
@@ -2105,9 +2451,10 @@ onMounted(async () => {
     <Dialog
       v-model:visible="dialogVisible"
       modal
+      class="contract-form-dialog"
       :header="editingId ? 'تعديل عقد' : 'إضافة عقد'"
-      :style="{ width: '760px' }"
-      :breakpoints="{ '960px': '95vw' }"
+      :style="{ width: 'min(1180px, 96vw)' }"
+      :breakpoints="{ '1200px': '96vw', '960px': '98vw' }"
     >
       <div class="form-grid">
         <div class="field">
@@ -2180,6 +2527,9 @@ onMounted(async () => {
             append-to="body"
             @update:model-value="onPricingModeChange"
           />
+          <small v-if="isCustomSchedulePricing" class="field-hint">
+            تغيير اماكن الدفعات: جدول كامل (ترتيب · نوع · اسم · شهر · استحقاق · مبلغ)
+          </small>
         </div>
         <div v-if="isSystemPricing" class="field">
           <label>خطة الأسعار</label>
@@ -2294,8 +2644,8 @@ onMounted(async () => {
             الإجمالي بالدولار =
             <strong>{{ totalPriceUsd.toLocaleString('en-US') }} $</strong>
           </small>
-          <small v-if="isUsdDisplay && form.sellingPrice">
-            سعر البيع المعروض: <strong>{{ toDisplayMoney(form.sellingPrice) }}</strong>
+          <small v-if="isUsdDisplay && netSellingPrice">
+            سعر البيع بعد الخصم: <strong>{{ toDisplayMoney(netSellingPrice) }}</strong>
           </small>
           <small v-if="isUsdDisplay && form.downPayment">
             المقدمة: <strong>{{ toDisplayMoney(form.downPayment) }}</strong>
@@ -2318,11 +2668,19 @@ onMounted(async () => {
               option-value="value"
               checkmark
               append-to="body"
+              @update:model-value="onPricingTypeChange"
             />
           </div>
           <div class="field">
             <label>سعر البيع</label>
             <InputNumber v-model="form.sellingPrice" :min="0" />
+            <small class="field-hint">
+              {{
+                isPercentage
+                  ? 'الأساس للنسب = سعر البيع بعد الخصم'
+                  : `بعد الخصم: ${formatMoney(netSellingPrice)}`
+              }}
+            </small>
           </div>
           <div class="field">
             <label>{{ isPercentage ? 'المقدمة ٪' : 'المقدمة (مبلغ)' }}</label>
@@ -2330,12 +2688,14 @@ onMounted(async () => {
               v-model="form.downPayment"
               :min="0"
               :max="isPercentage ? 100 : undefined"
+              :min-fraction-digits="0"
+              :max-fraction-digits="2"
             />
             <small class="field-hint">
               {{
                 isPercentage
-                  ? `يعني ${formatMoney(downPaymentAmount)} من سعر الوحدة`
-                  : 'مبلغ نقدي يُخصم من سعر الوحدة'
+                  ? `يعني ${formatMoney(downPaymentAmount)} من سعر البيع بعد الخصم`
+                  : 'مبلغ نقدي يُخصم من سعر الوحدة بعد الخصم'
               }}
             </small>
           </div>
@@ -2425,18 +2785,24 @@ onMounted(async () => {
               v-model="form.deliveryAmount"
               :min="0"
               :max="isPercentage ? 100 : undefined"
+              :min-fraction-digits="0"
+              :max-fraction-digits="2"
             />
             <small class="field-hint">
               {{
                 isPercentage
-                  ? `يعني ${formatMoney(deliveryAmountValue)} من سعر الوحدة`
-                  : 'مبلغ عند الاستلام يُخصم من سعر الوحدة'
+                  ? `يعني ${formatMoney(deliveryAmountValue)} من سعر البيع بعد الخصم`
+                  : 'مبلغ عند الاستلام يُخصم من سعر الوحدة بعد الخصم'
               }}
             </small>
           </div>
           <div class="field">
             <label>الخصم</label>
-            <InputNumber v-model="form.discount" :min="0" />
+            <InputNumber v-model="form.discount" :min="0" :max="form.sellingPrice || undefined" />
+            <small class="field-hint">
+              سعر الوحدة بعد الخصم:
+              <strong>{{ formatMoney(netSellingPrice) }}</strong>
+            </small>
           </div>
           <div class="field">
             <label>الضريبة</label>
@@ -2447,7 +2813,7 @@ onMounted(async () => {
             <InputNumber v-model="form.registrationFee" :min="0" />
           </div>
           <div class="field">
-            <label>تاريخ الاستلام{{ isCash ? '' : ' (اختياري)' }}</label>
+            <label>تاريخ الاستلام (اختياري)</label>
             <DatePicker v-model="deliveryDateModel" date-format="yy-mm-dd" show-icon show-clear />
           </div>
           <div class="field full formula-box">
@@ -2460,9 +2826,9 @@ onMounted(async () => {
               {{ formatMoney(computedRemaining) }}
             </p>
             <p v-else>
-              الباقي = سعر البيع − المصرف − المقدمة − الاستلام
+              الباقي = (سعر البيع − الخصم) − المصرف − المقدمة − الاستلام
               =
-              <b>{{ formatMoney(form.sellingPrice || 0) }}</b>
+              <b>{{ formatMoney(netSellingPrice) }}</b>
               −
               <b>{{ formatMoney(isBank ? form.financedAmount || 0 : 0) }}</b>
               −
@@ -2476,50 +2842,70 @@ onMounted(async () => {
               مجموع جدول الأقساط أدناه يجب أن يطابق هذا الباقي تماماً.
             </small>
             <small v-else-if="usesInstallments && remainingIsZero" class="ok-hint">
-              المتبقي صفر — السنوات والأشهر تُحفظ، ولن يُنشأ/يُطبع جدول الأقساط.
+              المتبقي صفر (مقدمة + استلام فقط) — لا حاجة لسنوات أو أشهر، ولن يُنشأ جدول أقساط.
             </small>
           </div>
 
-          <!-- جدول تغيير أماكن الدفعات يظهر مباشرة مع هذا المصدر -->
+          <!-- تقسيم دفعات يدوي: جدول كامل إضافة/حذف/ترتيب/نوع/اسم/شهر/تاريخ/مبلغ -->
           <template v-if="isCustomSchedulePricing">
-            <div class="field full section-title">ترتيب الدفعات والأشهر</div>
-            <div class="field">
-              <label>عدد السنوات</label>
-              <InputNumber v-model="form.years" :min="1" :max="40" show-buttons />
-            </div>
-            <div class="field">
-              <label>فترة الدفع (أشهر)</label>
-              <InputNumber v-model="form.paymentIntervalMonths" :min="1" :max="12" show-buttons />
-            </div>
-            <div class="field">
-              <label>تاريخ أول قسط / استلام</label>
-              <DatePicker v-model="firstInstallmentDateModel" date-format="yy-mm-dd" show-icon />
+            <div class="field full section-title">جدول الدفعات اليدوي</div>
+            <template v-if="needsInstallmentSchedule">
+              <div class="field">
+                <label>عدد السنوات</label>
+                <InputNumber v-model="form.years" :min="1" :max="40" show-buttons disabled />
+                <small class="field-hint">يُحسب تلقائياً من أشهر/تواريخ الجدول</small>
+              </div>
+              <div class="field">
+                <label>فترة الدفع بالأشهر</label>
+                <InputNumber v-model="form.paymentIntervalMonths" :min="1" :max="12" show-buttons disabled />
+                <small class="field-hint">تُستنتج من الفروقات بين أشهر الدفعات</small>
+              </div>
+              <div class="field">
+                <label>تاريخ مرجعي لأول استحقاق</label>
+                <DatePicker v-model="firstInstallmentDateModel" date-format="yy-mm-dd" show-icon />
+              </div>
+            </template>
+            <div v-else class="field full formula-box">
+              المتبقي صفر (مقدمة + استلام فقط) — لا حاجة لسنوات أو أشهر.
             </div>
 
-            <div v-if="remainingIsZero" class="field full formula-box">
-              المتبقي صفر — أدخل سعر البيع والمقدمة/الاستلام بحيث يبقى مبلغ للأقساط لبناء الجدول.
-            </div>
-            <div
-              v-else-if="!computedInstallmentCount && form.years && form.paymentIntervalMonths"
-              class="field full formula-box is-warn"
-            >
-              الأشهر الكلية لا تقبل القسمة على فترة الدفع — عدّل السنوات أو عدد الأشهر.
-            </div>
-            <div v-else-if="computedInstallmentCount" class="field full schedule-block">
+            <div class="field full schedule-block">
               <div class="schedule-head">
                 <div>
-                  <strong>جدول الدفعات المرتّب ({{ installmentRows.length }} صف)</strong>
+                  <strong>الدفعات ({{ installmentRows.length }})</strong>
                   <small>
-                    رتّب الصفوف (استلام / دفعات / مقدمة) وعدّل الأشهر والتواريخ بأزرار الرفع والإنزال
+                    أضف/احذف الصفوف · رتّب · اختر النوع · الاسم · الشهر · الاستحقاق · المبلغ
                   </small>
                 </div>
-                <Button
-                  label="إعادة بناء الجدول"
-                  size="small"
-                  severity="secondary"
-                  outlined
-                  @click="rebuildInstallmentSchedule"
-                />
+                <div class="schedule-actions">
+                  <Button
+                    label="إضافة دفعة"
+                    icon="pi pi-plus"
+                    size="small"
+                    @click="addManualScheduleRow(PricePlanScheduleKind.Installment)"
+                  />
+                  <Button
+                    label="إضافة استلام"
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    @click="addManualScheduleRow(PricePlanScheduleKind.Delivery)"
+                  />
+                  <Button
+                    label="إضافة مقدمة"
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    @click="addManualScheduleRow(PricePlanScheduleKind.DownPayment)"
+                  />
+                  <Button
+                    label="توليد تلقائي ثم عدّل"
+                    size="small"
+                    severity="help"
+                    outlined
+                    @click="rebuildInstallmentSchedule"
+                  />
+                </div>
               </div>
 
               <DataTable :value="installmentRows" size="small" striped-rows class="schedule-table">
@@ -2548,17 +2934,28 @@ onMounted(async () => {
                 <Column header="#" style="width: 48px">
                   <template #body="{ data }">{{ data.index }}</template>
                 </Column>
-                <Column header="النوع" style="width: 88px">
+                <Column header="النوع" style="width: 140px">
                   <template #body="{ data }">
-                    <span class="kind-pill" :data-kind="data.kind">{{ kindLabel(data.kind) }}</span>
+                    <Select
+                      v-model="data.kind"
+                      :options="paymentScheduleKindOptions"
+                      option-label="label"
+                      option-value="value"
+                      append-to="body"
+                      @update:model-value="onManualKindChange(data)"
+                    />
                   </template>
                 </Column>
-                <Column header="الاسم">
+                <Column header="الاسم" style="min-width: 240px">
                   <template #body="{ data }">
-                    <InputText v-model="data.name" class="w-full" />
+                    <InputText
+                      v-model="data.name"
+                      class="w-full schedule-name-input"
+                      placeholder="الدفعة الاولى…"
+                    />
                   </template>
                 </Column>
-                <Column header="الشهر" style="width: 110px">
+                <Column header="الشهر" style="width: 100px">
                   <template #body="{ data }">
                     <InputNumber
                       v-model="data.monthOffset"
@@ -2569,7 +2966,7 @@ onMounted(async () => {
                     />
                   </template>
                 </Column>
-                <Column header="تاريخ الاستحقاق" style="width: 160px">
+                <Column header="تاريخ الاستحقاق" style="width: 150px">
                   <template #body="{ data }">
                     <DatePicker
                       :model-value="data.dueDate ? new Date(data.dueDate) : null"
@@ -2588,27 +2985,37 @@ onMounted(async () => {
                       :min-fraction-digits="0"
                       :max-fraction-digits="2"
                       :disabled="
-                        data.kind === PricePlanScheduleKind.Delivery ||
-                        data.kind === PricePlanScheduleKind.DownPayment
+                        data.kind === PricePlanScheduleKind.Delivery
+                          || data.kind === PricePlanScheduleKind.DownPayment
                       "
                       @update:model-value="onInstallmentPercentEdit(data)"
                     />
                   </template>
                 </Column>
-                <Column header="المبلغ" style="width: 160px">
+                <Column header="المبلغ" style="width: 140px">
                   <template #body="{ data }">
                     <InputNumber
-                      v-if="
-                        !isPercentage &&
-                        data.kind !== PricePlanScheduleKind.Delivery &&
-                        data.kind !== PricePlanScheduleKind.DownPayment
-                      "
                       v-model="data.amount"
                       :min="0"
+                      :disabled="isPercentage && (
+                        data.kind === PricePlanScheduleKind.Delivery
+                          || data.kind === PricePlanScheduleKind.DownPayment
+                      )"
                       @update:model-value="onInstallmentAmountEdit(data)"
                     />
-                    <span v-else>{{ formatMoney(data.amount) }}</span>
                     <small v-if="isUsdDisplay" class="field-hint">{{ toDisplayMoney(data.amount) }}</small>
+                  </template>
+                </Column>
+                <Column header="" style="width: 56px">
+                  <template #body="{ index }">
+                    <Button
+                      icon="pi pi-trash"
+                      size="small"
+                      text
+                      rounded
+                      severity="danger"
+                      @click="removeManualScheduleRow(index)"
+                    />
                   </template>
                 </Column>
               </DataTable>
@@ -2618,18 +3025,16 @@ onMounted(async () => {
                 :class="{ ok: scheduleMatchesRemaining, bad: !scheduleMatchesRemaining }"
               >
                 <span v-if="isPercentage">
-                  مجموع نسب الدفعات: <strong>{{ scheduleSumPercent }}٪</strong>
+                  مجموع نسب الأقساط: <strong>{{ scheduleSumPercent }}٪</strong>
                   / الباقي: <strong>{{ remainingPercent }}٪</strong>
+                  ← {{ toDisplayMoney(computedRemaining) }}
                 </span>
                 <span v-else>
-                  مجموع مبالغ الدفعات: <strong>{{ toDisplayMoney(scheduleSumAmount) }}</strong>
+                  مجموع مبالغ الأقساط: <strong>{{ toDisplayMoney(scheduleSumAmount) }}</strong>
                   / الباقي: <strong>{{ toDisplayMoney(computedRemaining) }}</strong>
                 </span>
                 <strong>{{ scheduleMatchesRemaining ? 'مطابق ✓' : 'غير مطابق' }}</strong>
               </div>
-            </div>
-            <div v-else class="field full formula-box is-warn">
-              أدخل سعر البيع وعدد السنوات وفترة الدفع لإظهار جدول الترتيب.
             </div>
           </template>
         </template>
@@ -2639,11 +3044,15 @@ onMounted(async () => {
           <div class="field">
             <label>سعر البيع {{ isUsdDisplay ? '(IQD محفوظ)' : '' }}</label>
             <InputNumber v-model="form.sellingPrice" :min="0" disabled />
-            <small v-if="isUsdDisplay" class="field-hint">بالعرض: {{ toDisplayMoney(form.sellingPrice) }}</small>
+            <small v-if="isUsdDisplay" class="field-hint">بالعرض: {{ toDisplayMoney(netSellingPrice) }}</small>
           </div>
           <div class="field">
             <label>الخصم</label>
             <InputNumber v-model="form.discount" :min="0" disabled />
+            <small class="field-hint">
+              سعر الوحدة بعد الخصم:
+              <strong>{{ formatMoney(netSellingPrice) }}</strong>
+            </small>
           </div>
           <div class="field">
             <label>الضريبة</label>
@@ -2664,7 +3073,7 @@ onMounted(async () => {
             <small v-if="isUsdDisplay" class="field-hint">{{ toDisplayMoney(form.deliveryAmount) }}</small>
           </div>
           <div class="field">
-            <label>تاريخ الاستلام{{ isCash ? '' : ' (اختياري)' }}</label>
+            <label>تاريخ الاستلام (اختياري)</label>
             <DatePicker v-model="deliveryDateModel" date-format="yy-mm-dd" show-icon show-clear />
           </div>
           <div class="field hint-box">
@@ -2673,7 +3082,7 @@ onMounted(async () => {
               {{
                 isUsdDisplay
                   ? 'الدفعات تُعرض بالدولار = مبلغ الدينار ÷ سعر الصرف'
-                  : 'من خطة الأسعار — سعر البيع − المصرف − المقدمة − الاستلام'
+                  : 'من خطة الأسعار — (سعر البيع − الخصم) − المصرف − المقدمة − الاستلام'
               }}
             </small>
           </div>
@@ -2743,6 +3152,11 @@ onMounted(async () => {
             </div>
           </template>
 
+          <div v-if="remainingIsZero" class="field full formula-box">
+            المتبقي صفر (مقدمة + استلام فقط) — لا حاجة لسنوات أو أشهر، ولن يُنشأ جدول أقساط.
+          </div>
+
+          <template v-else-if="needsInstallmentSchedule">
           <div class="field">
             <label>عدد السنوات</label>
             <InputNumber v-model="form.years" :min="1" :max="40" show-buttons />
@@ -2751,12 +3165,6 @@ onMounted(async () => {
             <label>فترة الدفع (أشهر)</label>
             <InputNumber v-model="form.paymentIntervalMonths" :min="1" :max="12" show-buttons />
           </div>
-
-          <div v-if="remainingIsZero" class="field full formula-box">
-            المتبقي صفر — تُحفظ السنوات والأشهر للعرض/الطباعة، ولن يُنشأ جدول أقساط ولن يظهر في الطباعة.
-          </div>
-
-          <template v-else-if="needsInstallmentSchedule">
             <div class="field">
               <label>تاريخ أول قسط</label>
               <DatePicker v-model="firstInstallmentDateModel" date-format="yy-mm-dd" show-icon />
@@ -3111,10 +3519,12 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.schedule-head-actions {
+.schedule-head-actions,
+.schedule-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .schedule-head {
@@ -3160,6 +3570,20 @@ onMounted(async () => {
 
 .schedule-table :deep(.p-inputnumber) {
   width: 100%;
+}
+
+.schedule-table :deep(.schedule-name-input),
+.schedule-table :deep(.schedule-name-input.p-inputtext) {
+  min-width: 200px;
+  width: 100%;
+}
+
+:deep(.contract-form-dialog.p-dialog) {
+  max-width: 96vw;
+}
+
+:deep(.contract-form-dialog .p-dialog-content) {
+  overflow-x: auto;
 }
 
 .schedule-footer {
